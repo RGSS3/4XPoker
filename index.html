@@ -704,16 +704,16 @@
             };
             
             // 战争区域不解除的负面效果类型及其权重
-            const COMBAT_EFFECTS = [
-                {type: 'occupy_loss', name: '沦陷', weight: 3, 
+           const COMBAT_EFFECTS = [
+                {type: 'occupy_loss', name: '沦陷', weight: 3,
                     description: '移除本路径上{count}张回合得分最高的占领卡，不包括奇迹'},
-                {type: 'wonder_loss', name: '奇迹沦陷', weight: 2, 
+                {type: 'wonder_loss', name: '奇迹沦陷', weight: 2,
                     description: '从上往下移除本路径上{count}张奇迹的占领卡'},
-                {type: 'income_loss', name: '掠夺', weight: 2, 
-                    description: '本回合失去{points}点这条路径的占领收入'},
-                {type: 'exploration_loss', name: '模因入侵', weight: 1, 
-                    description: '直接把这条路径最上面{count}个探索区域变为未探索状态，如有占领牌直接弃牌'},
-                {type: 'area_loss', name: '未来破坏', weight: 1, 
+                {type: 'income_loss', name: '掠夺', weight: 2,
+                    description: '本回合损失该路径收入的{multiplier}倍 (蓝:3x, 紫:5x, 橙:10x)'}, // <-- 修改这里
+                {type: 'exploration_loss', name: '模因入侵', weight: 1,
+                    description: '直接把这条路径最上面{count}个探索/占领区域变为未探索状态，如有占领牌直接弃牌'},
+                {type: 'area_loss', name: '未来破坏', weight: 1,
                     description: '把这张卡上方的{count}个格子直接变为遗忘格子'}
             ];
             
@@ -791,7 +791,14 @@
                     heartBonus: '红心加成',
                     spadeBonus: '黑桃加成',
                     echoBonus: '回声加成',
-                    exportSuccess: '导出成功'
+                    exportSuccess: '导出成功',
+                    forgottenRegion: '遗忘区域', // <-- Add this
+                    clickToResolveCombat: '点击解除', // <-- Add this
+                    combatEffectOccupyLoss: '移除本路径上{count}张回合得分最高的占领卡，不包括奇迹',
+                    combatEffectWonderLoss: '从上往下移除本路径上{count}张奇迹的占领卡',
+                    combatEffectIncomeLoss: '本回合损失该路径收入的{multiplier}倍 (蓝:3x, 紫:5x, 橙:10x)', // <-- 修改这里
+                    combatEffectExplorationLoss: '直接把这条路径最上面{count}个探索/占领区域变为未探索状态，如有占领牌直接弃牌', // Clarified to include occupied
+                    combatEffectAreaLoss: '把这张卡上方的{count}个格子直接变为遗忘格子',
                 },
                 'en': {
                     name: 'English',
@@ -853,7 +860,14 @@
                     heartBonus: 'Heart bonus',
                     spadeBonus: 'Spade bonus',
                     echoBonus: 'Echo bonus',
-                    exportSuccess: 'Export successful'
+                    exportSuccess: 'Export successful',
+                    forgottenRegion: 'Forgotten Region', // <-- Add this
+                    clickToResolveCombat: 'Click to Resolve', // <-- Add this
+                    combatEffectOccupyLoss: 'Remove {count} highest scoring occupied cards on this path, excluding wonders',
+                    combatEffectWonderLoss: 'Remove {count} occupied wonder cards from top down on this path',
+                     combatEffectIncomeLoss: 'Lose {multiplier}x income from this path this turn (Blue:3x, Purple:5x, Orange:10x)', // <-- 修改这里
+                    combatEffectExplorationLoss: 'Revert top {count} explored/occupied regions on this path to unexplored, discarding occupied cards', // Clarified
+                    combatEffectAreaLoss: 'Convert {count} regions above this card to forgotten regions',
                 }
             };
             
@@ -1055,53 +1069,72 @@
                 return Object.values(rankCounts).some(c => c >= count);
             }
             
-            // 检查是否有符合要求的模式（考虑方片可以代替任何牌）
+            function getAllStandardCards() {
+                const all = [];
+                const allSuits = ['heart', 'diamond', 'spade', 'club']; // 方片自己也可以是替换值
+                const allRanks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+                for (const suit of allSuits) {
+                    for (const rank of allRanks) {
+                        all.push({ suit, rank });
+                    }
+                }
+                return all;
+            }
+
+            // 所有可能的标准卡牌，只生成一次
+            const allPossibleStandardCards = getAllStandardCards();
+
+
+            // 递归函数：尝试为当前手牌中的方片指定值
+            // currentHand: 当前正在尝试的牌组状态（其中方片可能已被替换）
+            // diamondIndices: 原始手牌中所有方片的索引数组
+            // currentIndexToAssign: diamondIndices 中当前需要处理的方片的索引
+            // checkFn: 要检查的模式函数
+            function recursiveAssignDiamonds(currentHand, diamondIndices, currentIndexToAssign, checkFn) {
+                // 基本情况：所有方片都已经指定了值
+                if (currentIndexToAssign >= diamondIndices.length) {
+                    // 对最终形成的牌组检查模式
+                    return checkFn(currentHand);
+                }
+
+                // 获取当前要指定值的方片在原始手牌中的索引
+                const originalDiamondIndex = diamondIndices[currentIndexToAssign];
+
+                // 尝试为这个方片指定每一种可能的标准卡牌值
+                for (const possibleCard of allPossibleStandardCards) {
+                    // 创建一个新牌组，将当前方片替换为 possibleCard
+                    const nextHand = currentHand.map((card, idx) => {
+                        return idx === originalDiamondIndex ? possibleCard : card;
+                    });
+
+                    // 递归调用，处理下一个方片
+                    if (recursiveAssignDiamonds(nextHand, diamondIndices, currentIndexToAssign + 1, checkFn)) {
+                        return true; // 如果发现了任何一个有效的组合，就返回 true
+                    }
+                }
+
+                // 如果为当前方片尝试了所有可能值，但都没有找到有效组合，则返回 false
+                return false;
+            }
+
+            // 检查手牌是否满足特定模式（考虑方片通配符）
+            // cards: 玩家当前选择的手牌数组 (Card 对象数组)
+            // checkFn: 用于检查模式的函数，接受一个 Card 对象数组作为参数
             function hasPattern(cards, checkFn) {
-                // 如果没有方片，直接检查
-                if (!cards.some(card => card.suit === 'diamond')) {
+                // 找到所有方片在传入的 cards 数组中的索引
+                const diamondIndices = cards
+                    .map((card, index) => ({ card, index }))
+                    .filter(item => item.card.suit === 'diamond')
+                    .map(item => item.index);
+
+                // 如果没有方片，直接检查模式
+                if (diamondIndices.length === 0) {
                     return checkFn(cards);
                 }
-                
-                // 对于有方片的情况，我们测试所有可能的方片替换
-                const diamonds = cards.filter(card => card.suit === 'diamond');
-                const nonDiamonds = cards.filter(card => card.suit !== 'diamond');
-                
-                // 先检查不替换的情况
-                if (checkFn(cards)) {
-                    return true;
-                }
-                
-                // 创建所有可能的52张牌，方片可以代替的
-                const allPossibleCards = [];
-                for (const suit of SUITS) {
-                    for (const rank of RANKS) {
-                        allPossibleCards.push({ suit, rank });
-                    }
-                }
-                
-                // 对每个方片，尝试替换成其他牌
-                for (let i = 0; i < diamonds.length; i++) {
-                    for (const possibleCard of allPossibleCards) {
-                        // 创建替换后的牌组
-                        const testCards = [...nonDiamonds];
-                        for (let j = 0; j < diamonds.length; j++) {
-                            if (j === i) {
-                                // 替换这张方片
-                                testCards.push(possibleCard);
-                            } else {
-                                // 保留其他方片
-                                testCards.push(diamonds[j]);
-                            }
-                        }
-                        
-                        // 检查这个组合
-                        if (checkFn(testCards)) {
-                            return true;
-                        }
-                    }
-                }
-                
-                return false;
+
+                // 如果有方片，开始递归分配值并检查模式
+                return recursiveAssignDiamonds(cards, diamondIndices, 0, checkFn);
             }
             
             // 初始化游戏区域
@@ -1229,7 +1262,7 @@
                         
                         if (region.status === 'unexplored') {
                             // 未探索的奇观显示为???
-                            if (region.type === 'wonder') {
+                            if (region.type === 'wonder' || region.type === 'combat') {
                                 statusIndicator.textContent = '???';
                                 statusIndicator.className += ' text-white';
                             } else {
@@ -1260,6 +1293,49 @@
                     }
                 }
             }
+
+            // 尝试使用当前选中的手牌解除战争区域
+            function attemptResolveCombatWithCards(pathId, index) {
+                const region = gameState.regions[pathId][index];
+
+                // 确保是已探索的战争区域
+                if (region.type !== 'combat' || region.status !== 'explored' || !region.combatData) {
+                    showMessage("这不是一个可以解除的战争区域"); // Fallback message
+                    resetSelectionState();
+                    return;
+                }
+
+                // 确保选择了手牌
+                if (gameState.selectedCards.length === 0) {
+                    showMessage('请先选择要用于解除战争的手牌');
+                    // 不要重置选择状态，因为用户可能刚刚点击了区域，希望去选择牌
+                    return;
+                }
+
+                // 获取选择的卡牌对象
+                const selectedCards = gameState.selectedCards.map(idx => gameState.hand[idx]);
+
+                // 检查卡牌是否满足解除条件
+                const requirement = region.combatData.requirement;
+
+                if (hasPattern(selectedCards, requirement.check)) { // 使用新的 hasPattern 函数
+                    // 成功解除战争区域
+                    resolveCombatSuccessfully(pathId, index, selectedCards); // resolveCombatSuccessfully 会处理区域状态、弃牌、日志、重置选择等
+                } else {
+                    // 不满足条件
+                    showMessage(`解除失败：选中的手牌不满足条件 "${requirement.display}"`);
+                    addLogEntry(`解除失败: ${PATH_NAMES[pathId]} ${region.rank}级「${region.combatData.name}」，选中的牌不满足条件`);
+
+                    // 解除失败后，重置选择状态
+                    resetSelectionState();
+                }
+
+                // 不管成功或失败，更新UI（renderHand、updateCornerInfo等）应该在 resolveCombatSuccessfully 或 resetSelectionState 之后发生
+                // resolveCombatSuccessfully 内部会调用 renderHand 和 updateDiscardCount
+                // resetSelectionState 内部会调用 renderHand
+                updateCornerInfo(); // 确保得分、手牌数量等信息更新
+                addToHistory(saveGameState()); // 保存状态
+            }
             
             // 检查区域是否可以被探索（必须相邻于已探索或已占领区域）
             function canExploreRegion(pathId, index) {
@@ -1279,6 +1355,27 @@
                 
                 return false;
             }
+
+            // 检查是否有战争区域阻碍更高级区域的探索
+            function hasBlockingCombatZone(pathId, targetIndex) {
+                // 获取目标区域的等级
+                const targetRank = targetIndex + 1;
+                
+                // 检查该路径上是否有战争区域阻塞了更高级区域的探索
+                for (let i = 0; i < targetIndex; i++) {
+                    const region = gameState.regions[pathId][i];
+                    // 如果有已探索但未解除的战争区域且仍在阻塞中
+                    if (region.status === 'explored' && 
+                        region.type === 'combat' && 
+                        region.combatData && 
+                        region.combatData.blocking) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            
+
             
             // 在格子上显示临时错误提示
             function showErrorOnRegion(regionElement, message) {
@@ -1305,120 +1402,127 @@
                 }, 2000);
             }
             
-            // 处理区域点击事件
             function handleRegionClick(pathId, index) {
                 // 获取区域元素
                 const regionContainer = document.getElementById(`${pathId}-regions`);
-                const displayIndex = 12 - index;
+                const displayIndex = 12 - index; // 倒序渲染的索引
                 const regionElement = regionContainer.children[displayIndex];
-                
+
                 const region = gameState.regions[pathId][index];
-                
-                // 如果是已探索的战争区域，显示解除战争界面
+
+                // --- 修改开始 ---
+                // 如果是已探索的战争区域
                 if (region.status === 'explored' && region.type === 'combat' && region.combatData) {
-                    showResolveCombatModal(pathId, index);
+                    // 如果已经选择了手牌 (无论是单选还是多选)
+                    if (gameState.selectedCards.length > 0) {
+                        // 直接尝试使用选中的手牌解除战争
+                        attemptResolveCombatWithCards(pathId, index);
+                    } else {
+                        // 如果没有选择手牌，显示解除战争弹窗
+                        showResolveCombatModal(pathId, index);
+                    }
+                    // 处理完战争区域点击后，无论如何都返回，不继续执行下面的探索/占领逻辑
                     return;
                 }
-                
+                // --- 修改结束 ---
+
+
+                // 以下是原有的非战争区域处理逻辑
+
                 // 检查是否选择了手牌
                 if (gameState.selectedCards.length === 0) {
                     showErrorOnRegion(regionElement, t('selectCard'));
                     showMessage(t('selectCard'));
                     return;
                 }
-                
-                // 如果是未探索区域，只需要一张牌
-                if (region.status === 'unexplored' && gameState.selectedCards.length > 1) {
-                    showErrorOnRegion(regionElement, "探索只能使用一张牌");
-                    showMessage("探索只能使用一张牌，请只选择一张");
+
+                // 以下逻辑只允许单选进行探索或占领
+                if (gameState.selectedCards.length > 1) {
+                    // 如果不是战争区域，多选了卡牌，视为无效操作，提示用户
+                    showErrorOnRegion(regionElement, "此操作只能使用一张牌");
+                    showMessage("探索或占领操作只能使用一张牌，请只选择一张");
+                    resetSelectionState(); // 多选在这种情况下是无效的，直接重置选择
                     return;
                 }
-                
-                // 如果是已探索正常区域准备占领，只需要一张牌
-                if (region.status === 'explored' && region.type !== 'combat' && gameState.selectedCards.length > 1) {
-                    showErrorOnRegion(regionElement, "占领只能使用一张牌");
-                    showMessage("占领只能使用一张牌，请只选择一张");
-                    return;
-                }
-                
-                // 获取选中的牌
-                const cardIndex = gameState.selectedCards[0];
+
+
+                // 以下是单选卡牌的探索/占领逻辑
+                const cardIndex = gameState.selectedCards[0]; // 只取第一个选中的卡牌
                 const card = gameState.hand[cardIndex];
                 const cardRank = RANK_VALUES[card.rank];
-                
+
+
                 // 自动判断操作类型
                 if (region.status === 'unexplored') {
                     // 探索操作
-                    
+
                     // 计算有效点数（黑桃翻倍）
                     let effectiveRank = cardRank;
                     if (card.suit === 'spade') {
                         effectiveRank = cardRank * 2;
                     }
-                    
+
                     // 检查卡牌点数是否足够
                     if (effectiveRank < region.rank) {
                         showErrorOnRegion(regionElement, t('notEnoughRank'));
                         showMessage(t('notEnoughRank'));
+                        resetSelectionState(); // 探索失败，重置选择
                         return;
                     }
-                    
+
                     // 检查是否可以探索该区域（必须相邻于已探索区域）
                     if (!canExploreRegion(pathId, index)) {
                         showErrorOnRegion(regionElement, '只能探索相邻格子');
                         showMessage('只能探索已探索区域相邻的格子');
+                        resetSelectionState(); // 探索失败，重置选择
                         return;
                     }
-                    
+
                     // 检查是否被战争区域阻塞了更高级区域的探索
                     if (hasBlockingCombatZone(pathId, index)) {
                         showErrorOnRegion(regionElement, '必须先解除战争区域');
                         showMessage('有战争区域阻碍了进一步探索，请先解除战争');
+                        resetSelectionState(); // 探索失败，重置选择
                         return;
                     }
-                    
+
                     // 执行探索行动
-                    exploreRegion(pathId, index, gameState.selectedCard);
-                } 
+                    exploreRegion(pathId, index); // exploreRegion 内部会处理移除卡牌、更新状态、日志、重置选择、保存历史
+
+                }
                 else if (region.status === 'explored') {
-                    // 占领操作
-                    occupyRegion(pathId, index, gameState.selectedCard);
+                    // 占领操作 (非战争区域)
+
+                    // 检查是否是遗忘区域，遗忘区域不能正常占领
+                    if (region.type === 'forgotten') {
+                        showErrorOnRegion(regionElement, '遗忘区域无法占领');
+                        showMessage('遗忘区域无法占领');
+                        resetSelectionState();
+                        return;
+                    }
+
+                    // 占领区域
+                    occupyRegion(pathId, index); // occupyRegion 内部会处理移除卡牌、更新状态、日志、重置选择、保存历史
+
                 }
                 else if (region.status === 'occupied') {
                     // 已被占领
                     showErrorOnRegion(regionElement, t('alreadyOccupied'));
                     showMessage(t('alreadyOccupied'));
+                    resetSelectionState(); // 已占领区域点击是无效操作，重置选择
                 }
-            }
-            
-            // 检查是否有战争区域阻碍更高级区域的探索
-            function hasBlockingCombatZone(pathId, targetIndex) {
-                // 获取目标区域的等级
-                const targetRank = targetIndex + 1;
-                
-                // 检查该路径上是否有战争区域阻塞了更高级区域的探索
-                for (let i = 0; i < targetIndex; i++) {
-                    const region = gameState.regions[pathId][i];
-                    // 如果有已探索但未解除的战争区域且仍在阻塞中
-                    if (region.status === 'explored' && 
-                        region.type === 'combat' && 
-                        region.combatData && 
-                        region.combatData.blocking) {
-                        return true;
-                    }
-                }
-                return false;
             }
             
             // 显示解除战争区域弹窗
             function showResolveCombatModal(pathId, index) {
                 const region = gameState.regions[pathId][index];
-                
+
                 // 如果不是战争区域或不是已探索状态，直接返回
                 if (region.type !== 'combat' || region.status !== 'explored' || !region.combatData) {
                     return;
                 }
-                
+
+                // 创建弹窗元素 (modalOverlay, modalContent 等) ... 保持不变
                 // 创建弹窗元素
                 const modalOverlay = document.createElement('div');
                 modalOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
@@ -1430,7 +1534,8 @@
                 const combatTier = region.combatData.tier;
                 const requirement = region.combatData.requirement;
                 const effect = region.combatData.effect;
-                
+
+                // ... 战争区域信息 (title, descriptionContainer) ... 保持不变
                 // 标题
                 const title = document.createElement('h3');
                 title.className = `text-xl font-bold mb-3 text-center ${combatTier === 'orange' ? 'text-orange-500' : combatTier === 'purple' ? 'text-purple-500' : 'text-blue-500'}`;
@@ -1469,44 +1574,53 @@
                 descriptionContainer.appendChild(requirementDesc);
                 descriptionContainer.appendChild(effectTitle);
                 descriptionContainer.appendChild(effectDesc);
-                
-                // 选择区域
+
+                // 选择区域容器
                 const selectionContainer = document.createElement('div');
                 selectionContainer.className = 'mb-4';
-                
+
                 const selectionTitle = document.createElement('div');
                 selectionTitle.className = 'font-bold mb-2';
                 selectionTitle.textContent = '选择解除方式:';
-                
+
                 // 使用多选手牌解除的选项
                 const resolveButton = document.createElement('button');
                 resolveButton.className = 'bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg w-full mb-2';
-                resolveButton.textContent = `使用手牌解除 (${requirement.display})`;
+                resolveButton.textContent = `使用手牌解除 (${region.combatData.requirement.display})`; // 显示具体条件
                 resolveButton.addEventListener('click', () => {
+                    // 关闭弹窗
                     document.body.removeChild(modalOverlay);
-                    tryResolveCombatWithCards(pathId, index);
+                    // 调用新的统一尝试解除函数
+                    attemptResolveCombatWithCards(pathId, index);
+                    // 注意：attemptResolveCombatWithCards 会处理成功/失败、日志、重置选择、更新UI和保存历史
                 });
-                
+
                 // 接受负面效果并结束回合的选项
                 const acceptEffectButton = document.createElement('button');
                 acceptEffectButton.className = 'bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg w-full mb-4';
                 acceptEffectButton.textContent = '接受效果并结束回合';
                 acceptEffectButton.addEventListener('click', () => {
+                    // 关闭弹窗
                     document.body.removeChild(modalOverlay);
-                    resolveCombatWithPenalty(pathId, index);
+                    // 玩家主动选择接受惩罚，立即结束回合。endTurn 函数会自动检测到这个未解除的战争区域并应用惩罚。
+                    endTurn();
+                    // endTurn 函数会处理惩罚、区域状态、日志、抽牌、更新UI和保存历史
                 });
-                
+
+
                 selectionContainer.appendChild(selectionTitle);
                 selectionContainer.appendChild(resolveButton);
                 selectionContainer.appendChild(acceptEffectButton);
-                
+
                 // 取消按钮
                 const cancelButton = document.createElement('button');
                 cancelButton.className = 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg w-full';
                 cancelButton.textContent = '取消';
                 cancelButton.addEventListener('click', () => {
                     document.body.removeChild(modalOverlay);
+                    // 取消弹窗不进行任何游戏操作，不影响当前选择状态
                 });
+
                 
                 // 组装弹窗
                 modalContent.appendChild(title);
@@ -1543,180 +1657,234 @@
                 }
             }
             
-            // 成功解除战争区域
-            function resolveCombatSuccessfully(pathId, index, cards) {
+            function resolveCombatSuccessfully(pathId, index, cards) { // 接受使用的卡牌数组作为参数
                 const region = gameState.regions[pathId][index];
-                
+
                 // 将战争区域转变为回声区域
                 region.type = 'echo';
                 region.combatData.blocking = false;  // 解除阻塞
-                
+
                 // 将用于解除的卡牌加入弃牌堆
                 const cardDescriptions = [];
-                const selectedIndices = [...gameState.selectedCards].sort((a, b) => b - a); // 从大到小排序
-                
-                for (const cardIndex of selectedIndices) {
+                // IMPORTANT: `cards` parameter here are Card objects, not indices.
+                // We need the indices to remove from gameState.hand.
+                // `attemptResolveCombatWithCards` passes the actual selected Card objects.
+                // So, we need to find the indices in the current gameState.hand corresponding to these cards.
+                // This is tricky if there are duplicate cards in hand.
+                // A better approach: `attemptResolveCombatWithCards` should pass the `gameState.selectedCards` (indices) directly.
+
+                // --- Let's modify attemptResolveCombatWithCards to pass indices ---
+                // Back in attemptResolveCombatWithCards:
+                // change `resolveCombatSuccessfully(pathId, index, selectedCards);`
+                // to     `resolveCombatSuccessfully(pathId, index, gameState.selectedCards);`
+
+                // --- Now back in resolveCombatSuccessfully ---
+                // Accept selectedIndices as parameter instead of cards
+                // function resolveCombatSuccessfully(pathId, index, selectedIndices) { ... }
+
+                const indicesToRemove = [...selectedIndices].sort((a, b) => b - a); // 从大到小排序
+
+                for (const cardIndex of indicesToRemove) {
                     const card = gameState.hand[cardIndex];
                     cardDescriptions.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
-                    
+
                     // 将卡牌加入弃牌堆
                     gameState.discardPile.push(card);
-                    
+
                     // 从手牌中移除
                     gameState.hand.splice(cardIndex, 1);
                 }
-                
+
                 // 更新弃牌堆计数
                 updateDiscardCount();
-                
+
                 // 更新区域显示
                 updateRegionDisplay(pathId, index);
-                
-                // 重置选择状态
-                resetSelectionState();
-                
-                // 重新渲染手牌
-                renderHand();
-                
+
                 // 记录到游戏日志
                 addLogEntry(`解除战争: ${PATH_NAMES[pathId]} ${region.rank}级「${region.combatData.name}」，使用 ${cardDescriptions.join(', ')}`);
-                
-                // 显示成功消息
-                showMessage(`成功解除战争区域！区域变为回声区域`);
-                
-                // 保存游戏状态到历史记录
-                addToHistory(saveGameState());
+
+                // 显示成功消息 (可选，由 attemptResolveCombatWithCards 负责)
+                // showMessage(`成功解除战争区域！区域变为回声区域`);
+
+                // *** 移除这行 ***
+                // resetSelectionState(); // <--- REMOVE THIS LINE
+
+                // *** 移除这行 ***
+                // renderHand(); // <--- REMOVE THIS LINE
+
+                // *** 移除这行 ***
+                // addToHistory(saveGameState()); // <--- REMOVE THIS LINE (Handled by attemptResolveCombatWithCards)
+
+                // 更新所有花色收获奇观的得分，因为弃牌可能会影响分数
+                updateAllSuitBonusWonders();
             }
             
-            // 接受负面效果并解除战争区域
+            // 处理接受战争区域负面效果并解除战争区域
             function resolveCombatWithPenalty(pathId, index) {
                 const region = gameState.regions[pathId][index];
-                const effect = region.combatData.effect;
-                
-                // 应用负面效果
+                // Preserve combat data for logging before clearing it
+                const originalCombatData = region.combatData;
+                const effect = originalCombatData.effect;
+
+                // 应用负面效果 (这可能会改变其他区域的状态，对于 exploration_loss 可能会将此区域本身也改回 unexplored)
                 applyNegativeEffect(pathId, index, effect);
-                
-                // 将战争区域转变为遗忘区域
-                region.type = 'forgotten';
-                region.combatData.blocking = false;  // 解除阻塞
-                
-                // 更新区域显示
+
+
+                // --- 最终确定触发此惩罚的战争区域 (index) 的状态 ---
+                region.type = 'forgotten'; // 始终变为遗忘类型
+                region.combatData = null;   // 清除战争数据
+                region.wonderData = null;   // 清除奇观数据
+                region.wonderEffect = null; // 清除奇观效果
+                region.points = 0;          // 遗忘区域得分0
+
+                // 根据效果类型设置最终状态
+                if (effect.type === 'exploration_loss') {
+                    // 如果是模因入侵，最终状态是未探索
+                    region.status = 'unexplored';
+                } else {
+                    // 其他效果，最终状态是已探索
+                    region.status = 'explored';
+                }
+
+                region.blocking = false; // 始终解除对后续格子的阻碍
+
+                // 更新区域显示 (更新触发区域)
                 updateRegionDisplay(pathId, index);
-                
+
                 // 记录到游戏日志
-                addLogEntry(`接受战争效果: ${PATH_NAMES[pathId]} ${region.rank}级「${region.combatData.name}」，受到负面效果：${effect.name}`);
-                
-                // 显示消息
-                showMessage(`已接受战争效果！区域变为遗忘区域`);
-                
-                // 结束当前回合
-                endTurn();
-                
-                // 保存游戏状态到历史记录
-                addToHistory(saveGameState());
+                let effectDescForLog = effect.description.replace('{count}', effect.severity).replace('{points}', effect.points);
+                // Use originalCombatData for name in log if available
+                addLogEntry(`接受战争效果: ${PATH_NAMES[pathId]} ${region.rank}级「${originalCombatData ? originalCombatData.name : '战争区域'}」，区域变为遗忘（${region.status === 'unexplored' ? '未探索' : '已探索'}），受到负面效果：${effectDescForLog}`);
+
+                // Note: updateAllSuitBonusWonders is handled by effect functions if needed or at the end of endTurn.
             }
             
             // 应用战争区域的负面效果
             function applyNegativeEffect(pathId, index, effect) {
                 const severity = effect.severity; // 效果严重程度（数量）
-                
+
                 switch(effect.type) {
-                    case 'occupy_loss': 
-                        // 移除本路径上N张回合得分最高的占领卡，不包括奇观
+                    case 'occupy_loss':
                         removeHighestScoringOccupations(pathId, severity, false);
                         break;
-                        
+
                     case 'wonder_loss':
-                        // 移除本路径上N张奇观的占领卡
                         removeHighestScoringOccupations(pathId, severity, true);
                         break;
-                        
+
                     case 'income_loss':
-                        // 本回合失去指定点数的路径占领收入
-                        applyPathIncomeLoss(pathId, effect.points);
+                        // 根据严重程度确定掠夺的倍率
+                        let pillageMultiplier;
+                        if (severity === 3) pillageMultiplier = 10; // 橙级
+                        else if (severity === 2) pillageMultiplier = 5; // 紫级
+                        else pillageMultiplier = 3; // 蓝级 (severity 1)
+
+                        // 记录掠夺惩罚倍率
+                        recordPillagePenalty(pathId, pillageMultiplier);
+                        // 实际扣分在 endTurn 中结算
                         break;
-                        
+
                     case 'exploration_loss':
-                        // 直接把这条路径最上面N个探索区域变为未探索状态
                         revertTopExploredRegions(pathId, severity);
                         break;
-                        
+
                     case 'area_loss':
-                        // 把这张卡上方的N个格子直接变为遗忘格子
                         convertToForgottenRegions(pathId, index, severity);
                         break;
                 }
             }
             
             // 移除路径上得分最高的N个占领区域
+           
+            // 移除路径上得分最高的N个占领区域（不包括奇观，或只包括奇观）
             function removeHighestScoringOccupations(pathId, count, wondersOnly) {
-                // 获取该路径的所有已占领区域
+                // 获取该路径的所有已占领区域 (根据 wondersOnly 过滤)
                 const occupiedRegions = [];
-                
                 for (let i = 0; i < gameState.regions[pathId].length; i++) {
                     const region = gameState.regions[pathId][i];
                     if (region.status === 'occupied') {
-                        // 如果只移除奇观且当前区域是奇观，或者移除所有非奇观区域
-                        if ((wondersOnly && region.type === 'wonder') || 
-                            (!wondersOnly && region.type !== 'wonder')) {
+                        if ((wondersOnly && region.type === 'wonder') ||
+                            (!wondersOnly && region.type !== 'wonder' && region.type !== 'forgotten')) { // 遗忘区域也不能被普通沦陷移除
                             occupiedRegions.push({index: i, region, points: region.points});
                         }
                     }
                 }
-                
-                // 如果没有满足条件的占领区域，直接返回
-                if (occupiedRegions.length === 0) {
-                    addLogEntry(`无法执行「${wondersOnly ? '奇迹沦陷' : '沦陷'}」效果：${PATH_NAMES[pathId]}上没有${wondersOnly ? '奇观' : '普通'}占领区域`);
-                    return;
-                }
-                
+
                 // 按得分从高到低排序
                 occupiedRegions.sort((a, b) => b.points - a.points);
-                
-                // 移除不超过count个区域
+
+                // 确定实际移除数量
                 const actualCount = Math.min(count, occupiedRegions.length);
                 const removedRegions = [];
-                
+
+                // 移除区域并加入弃牌堆
                 for (let i = 0; i < actualCount; i++) {
                     const { index, region } = occupiedRegions[i];
-                    
-                    // 记录被移除的区域信息
+
                     let regionInfo = `${PATH_NAMES[pathId]} ${region.rank}`;
-                    if (region.type === 'wonder' && region.wonderData) {
-                        regionInfo += ` 奇观「${region.wonderData.name}」`;
-                    }
+                    if (region.type === 'wonder' && region.wonderData) regionInfo += ` 奇观「${region.wonderData.name}」`;
                     removedRegions.push(`${regionInfo} (${region.points}分/回合)`);
-                    
-                    // 如果有卡牌，加入弃牌堆
+
                     if (region.occupyCard) {
                         gameState.discardPile.push(region.occupyCard);
                     }
-                    
+
                     // 重置区域状态为已探索
-                    region.status = 'explored';
+                    region.status = 'explored'; // 变为可重新占领
                     region.occupyCard = null;
                     region.points = 0;
-                    
-                    // 如果是奇观，也需要重置奇观效果
+
                     if (region.type === 'wonder' && region.wonderEffect) {
-                        region.wonderEffect = null;
+                        region.wonderEffect = null; // 移除奇观效果
                     }
-                    
-                    // 更新区域显示
+
                     updateRegionDisplay(pathId, index);
                 }
-                
+
+                // --- 新增：如果移除数量不足，应用罚分 ---
+                const deficit = count - actualCount;
+                if (deficit > 0) {
+                    const penalty = deficit * 100;
+                    gameState.score -= penalty;
+                    scoreDisplay.textContent = gameState.score; // 更新UI得分
+                    updateCornerInfo(); // 更新所有信息
+                    addLogEntry(`「${wondersOnly ? '奇迹沦陷' : '沦陷'}」效果: 移除了${actualCount}个占领区域，缺少${deficit}个，每缺少一个损失100分，总损失${penalty}分`);
+                }
+                // --- 新增结束 ---
+
                 // 更新弃牌堆计数
                 updateDiscardCount();
-                
+
                 // 记录到游戏日志
-                addLogEntry(`「${wondersOnly ? '奇迹沦陷' : '沦陷'}」效果: ${removedRegions.join(', ')} 被移除`);
-                
-                // 更新所有花色收获奇观的得分
+                if (removedRegions.length > 0) {
+                    addLogEntry(`「${wondersOnly ? '奇迹沦陷' : '沦陷'}」效果: ${removedRegions.join(', ')} 被移除`);
+                } else if (deficit === 0) { // 如果实际移除为0但不需要罚分，说明没有满足条件的区域
+                    addLogEntry(`无法执行「${wondersOnly ? '奇迹沦陷' : '沦陷'}」效果：${PATH_NAMES[pathId]}上没有${wondersOnly ? '奇观' : '普通'}占领区域`);
+                }
+
+
+                // 更新所有花色收获奇观的得分 (因为占领卡被移除了)
                 updateAllSuitBonusWonders();
+            }
+
+            // 记录掠夺惩罚的倍率，将在回合结束时结算
+            function recordPillagePenalty(pathId, multiplier) {
+                if (!gameState.pillagePenalties) {
+                    gameState.pillagePenalties = {};
+                }
+                if (!gameState.pillagePenalties[pathId]) {
+                    gameState.pillagePenalties[pathId] = [];
+                }
+                // 添加当前倍率到该路径的倍率列表
+                gameState.pillagePenalties[pathId].push(multiplier);
+
+                // 记录日志，提示惩罚已触发，但未结算
+                addLogEntry(`「掠夺」效果触发: ${PATH_NAMES[pathId]}路径，本回合将遭受 ${multiplier}x 倍率收入损失`);
             }
             
             // 应用路径收入损失
+            /*
             function applyPathIncomeLoss(pathId, points) {
                 // 记录该路径被减少的收入
                 if (!gameState.incomeLoss) {
@@ -1727,69 +1895,118 @@
                 
                 // 记录到游戏日志
                 addLogEntry(`「掠夺」效果: ${PATH_NAMES[pathId]}路径本回合减少${points}点收入`);
-            }
-            
-            // 将路径上最高级的N个已探索区域恢复为未探索状态
-            function revertTopExploredRegions(pathId, count) {
-                // 获取该路径的所有已探索但未占领的区域
-                const exploredRegions = [];
-                
+            }*/
+           // 将路径上最高级的N个已探索/占领区域恢复为未探索状态
+            // (可以包括触发效果的战争区域本身)
+            function revertTopExploredRegions(pathId, count) { // Simplified: No need to pass triggering index here anymore
+
+                // 获取该路径所有 已探索 或 已占领 的区域
+                const potentialRegionsToRevert = [];
                 for (let i = 0; i < gameState.regions[pathId].length; i++) {
                     const region = gameState.regions[pathId][i];
-                    if (region.status === 'explored') {
-                        exploredRegions.push({index: i, rank: region.rank});
-                    } else if (region.status === 'occupied') {
-                        // 如果被占领，也计入可能被影响的区域
-                        exploredRegions.push({index: i, rank: region.rank, occupied: true});
+                    if (region.status === 'explored' || region.status === 'occupied') {
+                        potentialRegionsToRevert.push({index: i, rank: region.rank, occupied: region.status === 'occupied'});
                     }
                 }
-                
-                // 如果没有已探索区域，直接返回
-                if (exploredRegions.length === 0) {
-                    addLogEntry(`无法执行「模因入侵」效果：${PATH_NAMES[pathId]}上没有已探索区域`);
+
+                // 如果没有可还原区域
+                if (potentialRegionsToRevert.length === 0) {
+                    // --- 新增：如果数量不够，应用罚分 ---
+                    const deficit = count;
+                    if (deficit > 0) {
+                        const penalty = deficit * 100;
+                        gameState.score -= penalty;
+                        scoreDisplay.textContent = gameState.score;
+                        updateCornerInfo();
+                        addLogEntry(`「模因入侵」效果: ${PATH_NAMES[pathId]}上没有可还原区域，缺少${deficit}个，每缺少一个损失100分，总损失${penalty}分`);
+                    } else {
+                        // Log if count is 0, but no regions found
+                        addLogEntry(`无法执行「模因入侵」效果：${PATH_NAMES[pathId]}上没有已探索/占领区域`);
+                    }
+                    // --- 新增结束 ---
                     return;
                 }
-                
+
                 // 按等级从高到低排序
-                exploredRegions.sort((a, b) => b.rank - a.rank);
-                
-                // 移除不超过count个区域
-                const actualCount = Math.min(count, exploredRegions.length);
-                const revertedRegions = [];
-                
+                potentialRegionsToRevert.sort((a, b) => b.rank - a.rank);
+
+                // 确定实际还原数量（最多count个）
+                const actualCount = Math.min(count, potentialRegionsToRevert.length);
+                const revertedRegionsInfo = []; // 用于日志记录
+
+                // 对前 actualCount 个区域进行处理
                 for (let i = 0; i < actualCount; i++) {
-                    const { index, rank, occupied } = exploredRegions[i];
-                    const region = gameState.regions[pathId][index];
-                    
+                    const { index, rank, occupied } = potentialRegionsToRevert[i];
+                    const region = gameState.regions[pathId][index]; // 获取区域当前状态
+
+                    // 如果这个区域在处理过程中状态变了 (不应该发生但保险)
+                    if (region.status === 'unexplored') continue;
+
                     // 记录被还原的区域信息
-                    revertedRegions.push(`${PATH_NAMES[pathId]} ${rank}`);
-                    
-                    // 如果区域被占领，需要先将卡牌弃掉
-                    if (occupied && region.occupyCard) {
-                        gameState.discardPile.push(region.occupyCard);
-                        region.occupyCard = null;
-                        region.points = 0;
-                        
+                    let regionDescription = `${PATH_NAMES[pathId]} ${rank}`;
+                    if (region.type === 'wonder' && region.wonderData) regionDescription += ` 奇观「${region.wonderData.name}」`;
+                    else if (region.type === 'combat' && region.combatData) regionDescription += ` 战争「${region.combatData.name}」`; // 模因入侵会影响战争区域本身
+                    else if (region.type === 'echo') regionDescription += ` (回声区域)`;
+                    else if (region.type === 'forgotten') regionDescription += ` (遗忘区域)`; // 模因入侵可能影响其他遗忘区域
+
+                    revertedRegionsInfo.push(regionDescription);
+
+
+                    // 如果区域是占领状态，将卡牌弃掉
+                    if (region.status === 'occupied') {
+                        if (region.occupyCard) {
+                            gameState.discardPile.push(region.occupyCard);
+                            region.occupyCard = null;
+                        }
+                        region.points = 0; // 占领得分归零
+                        // 如果是占领的奇观，移除效果
                         if (region.type === 'wonder' && region.wonderEffect) {
                             region.wonderEffect = null;
                         }
                     }
-                    
-                    // 重置区域状态为未探索
+
+
+                    // *** 关键修改：设置状态为未探索，如果是原战争区域，同时改为遗忘类型 ***
                     region.status = 'unexplored';
-                    
+                    // 如果被还原的区域是战斗区域，它现在变为遗忘区域
+                    if (region.type === 'combat') { // 注意：这里判断 type === 'combat' 是指原始类型
+                        // 如果触发区域通过此效果被还原，则将其类型改为 forgotten
+                        // 但这个逻辑应该在 resolveCombatWithPenalty 中处理更好，保证触发区域的最终状态
+                        // 这里的 revertTopExploredRegions 应该只负责将区域状态改回 unexplored 和弃牌
+                        // type 变为 forgotten 的逻辑由 resolveCombatWithPenalty 统一处理
+                    }
+
+
                     // 更新区域显示
                     updateRegionDisplay(pathId, index);
                 }
-                
-                // 更新弃牌堆计数
-                updateDiscardCount();
-                
+
+                // --- 新增：如果实际还原数量不足，应用罚分 ---
+                const deficit = count - actualCount;
+                if (deficit > 0) {
+                    const penalty = deficit * 100;
+                    gameState.score -= penalty;
+                    scoreDisplay.textContent = gameState.score;
+                    updateCornerInfo();
+                    addLogEntry(`「模因入侵」效果: 移除了${actualCount}个可还原区域，缺少${deficit}个，每缺少一个损失100分，总损失${penalty}分`);
+                }
+                // --- 新增结束 ---
+
+
+                // 更新弃牌堆计数 (如果实际有弃牌的话)
+                if (actualCount > 0 && revertedRegionsInfo.length > 0) {
+                    updateDiscardCount();
+                    // 更新花色得分 (如果弃掉了占领卡)
+                    updateAllSuitBonusWonders();
+                }
+
+
                 // 记录到游戏日志
-                addLogEntry(`「模因入侵」效果: ${revertedRegions.join(', ')} 被重置为未探索状态`);
-                
-                // 更新所有花色收获奇观的得分
-                updateAllSuitBonusWonders();
+                if (revertedRegionsInfo.length > 0) {
+                    addLogEntry(`「模因入侵」效果: ${revertedRegionsInfo.join(', ')} 被重置为未探索状态`);
+                }
+                // 如果 actualCount == 0 且 deficit == 0, 已经在上面 log 了 "无法执行"
+
             }
             
             // 将指定区域上方的N个格子转换为遗忘区域
@@ -1890,7 +2107,7 @@
                 
                 // 从手牌中移除卡牌，加入弃牌堆
                 gameState.discardPile.push(card);
-                gameState.hand.splice(cardIndex, 1);
+                gameState.hand.splice(selectedCardIndex, 1);
                 
                 // 更新弃牌堆计数
                 updateDiscardCount();
@@ -2028,7 +2245,7 @@
             }
             
             // 占领区域
-            function occupyRegion(pathId, index, cardIndex) {
+            function occupyRegion(pathId, index) {
                 // 获取选择的卡牌索引（使用selectedCards数组第一个元素）
                 const selectedCardIndex = gameState.selectedCards[0]; 
                 // 获取选择的卡牌和区域
@@ -2075,7 +2292,7 @@
                     updateAllSuitBonusWonders(pathId, card.suit);
                     
                     // 从手牌中移除卡牌
-                    gameState.hand.splice(cardIndex, 1);
+                    gameState.hand.splice(selectedCardIndex, 1);
                     
                     // 重新渲染手牌
                     renderHand();
@@ -2140,7 +2357,7 @@
                 updateAllSuitBonusWonders();
                 
                 // 从手牌中移除卡牌
-                gameState.hand.splice(cardIndex, 1);
+                gameState.hand.splice(selectedCardIndex, 1);
                 
                 // 重新渲染手牌
                 renderHand();
@@ -2165,121 +2382,235 @@
             function updateRegionDisplay(pathId, index) {
                 const region = gameState.regions[pathId][index];
                 const regionContainer = document.getElementById(`${pathId}-regions`);
-                
+
                 // 注意：我们倒序渲染了区域，所以索引需要调整
                 // 在倒序渲染中，索引12(13)在容器的第0个位置，索引0(1)在容器的第12个位置
                 const displayIndex = 12 - index;
                 const regionElement = regionContainer.children[displayIndex];
-                
+
                 // 清空现有内容
                 regionElement.innerHTML = '';
-                
+
                 // 更新样式 - 使用与手牌大小一致的尺寸
                 regionElement.className = 'rounded-md w-16 h-24 md:w-20 md:h-30 border shadow-md flex flex-col items-center justify-center cursor-pointer relative';
-                
+
                 // 根据区域状态和类型设置样式
                 if (region.status === 'unexplored') {
                     regionElement.classList.add('bg-gray-400', 'dark:bg-gray-700');
                 } else if (region.status === 'explored') {
-                    regionElement.classList.add('bg-white', 'dark:bg-gray-600');
+                    regionElement.classList.add('bg-white', 'dark:bg-gray-600'); // 已探索基础色
+                    // 遗忘区域有特殊颜色
+                    if (region.type === 'forgotten') {
+                        regionElement.classList.add('bg-gray-200', 'dark:bg-gray-700', 'opacity-75'); // 遗忘区域特定颜色
+                    }
                 } else if (region.status === 'occupied') {
                     regionElement.classList.add('bg-blue-100', 'dark:bg-blue-800');
                 }
-                
-                // 如果是回声区域，添加特殊样式
+
+                // 如果是回声区域且未被占领，添加特殊样式
                 if (region.type === 'echo' && region.status !== 'occupied') {
                     regionElement.classList.add('bg-green-200', 'dark:bg-green-800');
                 }
-                
-                // 如果是奇观区域，添加特殊样式
+
+                // 如果是奇观区域，添加特殊样式（无论状态）
                 if (region.type === 'wonder' && region.wonderData) {
-                    // 根据奇观级别添加相应的样式类
                     const tierClass = `wonder-${region.wonderData.tier}`;
                     regionElement.classList.add(tierClass);
                 }
-                
-                // 如果是战争区域，添加特殊样式
+
+                // 如果是战争区域，添加特殊样式（无论状态）
                 if (region.type === 'combat' && region.combatData) {
                     const tierClass = `combat-${region.combatData.tier}`;
                     regionElement.classList.add(tierClass);
                 }
-                
-                // 如果是遗忘区域，添加特殊样式
-                if (region.type === 'forgotten') {
-                    regionElement.classList.add('bg-gray-200', 'dark:bg-gray-600', 'opacity-75');
-                }
-                
+
                 // 区域等级显示（顶部）
                 const rankElement = document.createElement('div');
                 rankElement.className = 'text-sm font-bold absolute top-1 left-1';
                 rankElement.textContent = index + 1; // 显示数字1-13
                 regionElement.appendChild(rankElement);
-                
+
+
                 // 根据区域类型和状态添加不同的内容
-                if (region.type === 'wonder') {
-                    // 奇观区域特殊显示
-                    if (region.status === 'unexplored') {
-                        // 未探索的奇观显示为???，但显示颜色级别
-                        const unknownElement = document.createElement('div');
-                        unknownElement.className = 'text-lg font-bold text-white text-center';
-                        unknownElement.textContent = '???';
-                        regionElement.appendChild(unknownElement);
-                    } 
-                    else if (region.status === 'explored') {
-                        // 已探索奇观显示名称和条件
-                        const nameElement = document.createElement('div');
-                        nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
-                        nameElement.textContent = region.wonderData.name;
-                        regionElement.appendChild(nameElement);
-                        
-                        // 显示占领条件
-                        const conditionElement = document.createElement('div');
-                        conditionElement.className = 'text-xs text-center';
-                        conditionElement.textContent = '需要: J、Q、K、A或红心';
-                        regionElement.appendChild(conditionElement);
-                        
-                        // 显示奇观效果
-                        const effectElement = document.createElement('div');
-                        effectElement.className = 'text-xs text-center mt-1 px-1';
-                        const effectText = region.wonderData.effect.name;
-                        effectElement.textContent = `[${effectText}]`;
-                        regionElement.appendChild(effectElement);
-                    }
-                    else if (region.status === 'occupied') {
-                        // 已占领奇观显示名称和效果
-                        const nameElement = document.createElement('div');
-                        nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
-                        nameElement.textContent = region.wonderData.name;
-                        regionElement.appendChild(nameElement);
-                        
-                        // 卡牌展示
-                        if (region.occupyCard) {
-                            const card = region.occupyCard;
-                            const cardElement = document.createElement('div');
-                            cardElement.className = 'flex items-center justify-center';
-                            
-                            const cardRank = document.createElement('div');
-                            cardRank.className = 'text-sm font-bold';
-                            cardRank.textContent = card.rank;
-                            
-                            const cardSuit = document.createElement('div');
-                            cardSuit.className = `${card.suit} text-lg`;
-                            cardSuit.textContent = SUIT_SYMBOLS[card.suit];
-                            
-                            cardElement.appendChild(cardRank);
-                            cardElement.appendChild(cardSuit);
-                            regionElement.appendChild(cardElement);
+                if (region.type === 'wonder' && region.wonderData) {
+                        // 奇观区域特殊显示
+                        if (region.status === 'unexplored') {
+                            // 未探索的奇观显示为???，但显示颜色级别
+                            const unknownElement = document.createElement('div');
+                            unknownElement.className = 'text-lg font-bold text-white text-center';
+                            unknownElement.textContent = '???';
+                            regionElement.appendChild(unknownElement);
                         }
-                        
-                        // 奇观效果
-                        const effectElement = document.createElement('div');
-                        effectElement.className = 'text-xs text-center mt-1 px-1';
-                        const effectText = region.wonderData.effect.name;
-                        effectElement.textContent = `[${effectText}]`;
-                        regionElement.appendChild(effectElement);
-                        
-                        // 得分显示
-                        if (region.points > 0) {
+                        else if (region.status === 'explored') {
+                            // 已探索奇观显示名称和条件、效果
+                            const nameElement = document.createElement('div');
+                            nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                            nameElement.textContent = region.wonderData.name;
+                            regionElement.appendChild(nameElement);
+
+                            // 显示占领条件
+                            const conditionElement = document.createElement('div');
+                            conditionElement.className = 'text-xs text-center';
+                            conditionElement.textContent = '需要: J、Q、K、A或红心';
+                            regionElement.appendChild(conditionElement);
+
+                            // 显示奇观效果类型
+                            const effectElement = document.createElement('div');
+                            effectElement.className = 'text-xs text-center mt-1 px-1';
+                            const effectText = region.wonderData.effect.name;
+                            effectElement.textContent = `[${effectText}]`; // 显示效果名称或符号
+                            regionElement.appendChild(effectElement);
+
+                        }
+                        else if (region.status === 'occupied') {
+                            // 已占领奇观显示名称和效果
+                            const nameElement = document.createElement('div');
+                            nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                            nameElement.textContent = region.wonderData.name;
+                            regionElement.appendChild(nameElement);
+
+                            // 卡牌展示
+                            if (region.occupyCard) {
+                                const card = region.occupyCard;
+                                const cardElement = document.createElement('div');
+                                cardElement.className = 'flex items-center justify-center';
+
+                                const cardRank = document.createElement('div');
+                                cardRank.className = 'text-sm font-bold';
+                                cardRank.textContent = card.rank;
+
+                                const cardSuit = document.createElement('div');
+                                cardSuit.className = `${card.suit} text-lg`;
+                                cardSuit.textContent = SUIT_SYMBOLS[card.suit];
+
+                                cardElement.appendChild(cardRank);
+                                cardElement.appendChild(cardSuit);
+                                regionElement.appendChild(cardElement);
+                            }
+
+                            // 奇观效果类型
+                            const effectElement = document.createElement('div');
+                            effectElement.className = 'text-xs text-center mt-1 px-1';
+                            const effectText = region.wonderData.effect.name;
+                            effectElement.textContent = `[${effectText}]`; // 显示效果名称或符号
+                            regionElement.appendChild(effectElement);
+
+
+                            // 得分显示（底部）
+                            // 奇观得分可能是0 (如抽卡/人口效果), 只有得分>0才显示
+                            if (region.points > 0) {
+                                const pointsElement = document.createElement('div');
+                                pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
+                                pointsElement.textContent = `+${region.points}`;
+                                regionElement.appendChild(pointsElement);
+                            }
+
+                        }
+                    }
+                    else if (region.type === 'combat' && region.combatData) {
+                        // 战争区域特殊显示
+                        if (region.status === 'unexplored') {
+                            // 未探索的战争区域显示为???
+                            const unknownElement = document.createElement('div');
+                            unknownElement.className = 'text-lg font-bold text-white text-center';
+                            unknownElement.textContent = '???';
+                            regionElement.appendChild(unknownElement);
+                        }
+                        else if (region.status === 'explored') {
+                            // 已探索的战争区域显示战争名称、解除条件和效果
+                            const nameElement = document.createElement('div');
+                            nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                            nameElement.textContent = region.combatData.name;
+                            regionElement.appendChild(nameElement);
+
+                            // 显示解除条件
+                            const conditionElement = document.createElement('div');
+                            conditionElement.className = 'text-xs text-center';
+                            conditionElement.textContent = region.combatData.requirement.display;
+                            regionElement.appendChild(conditionElement);
+
+                            // 显示战争效果名称
+                            const effectElement = document.createElement('div');
+                            effectElement.className = 'text-xs text-center mt-1 px-1 text-red-500 dark:text-red-400';
+                            effectElement.textContent = region.combatData.effect.name; // 只显示效果名称
+                            regionElement.appendChild(effectElement);
+
+                            // 添加"点击解除"提示
+                            const clickPrompt = document.createElement('div');
+                            clickPrompt.className = 'text-xs text-center mt-1 animate-pulse';
+                            clickPrompt.textContent = t('clickToResolveCombat'); // 使用翻译
+                            regionElement.appendChild(clickPrompt);
+                        }
+                        // Note: Combat zones cannot be 'occupied' in the traditional sense.
+                        // When resolved, they become 'echo' or 'forgotten', and their status becomes 'explored'.
+                    }
+                    else if (region.type === 'forgotten') {
+                        // 遗忘区域特殊显示
+                        // 它应该处于 'explored' 状态，但不显示可占领，而是显示遗忘区域标识
+                        const statusIndicator = document.createElement('div');
+                        statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
+                        statusIndicator.textContent = t('forgottenRegion'); // 使用翻译
+                        statusIndicator.className += ' text-gray-500 dark:text-gray-400'; // 灰色文本
+                        regionElement.appendChild(statusIndicator);
+
+                        // 如果曾被占领，显示卡牌 (可选，根据你的游戏设定，遗忘区域可能保留卡牌或弃牌)
+                        // 根据你描述，是弃牌，所以不显示卡牌
+                        if (region.occupyCard) {
+                            console.warn("遗忘区域不应该有占领卡牌:", region);
+                            // 理论上这里不应该有卡牌，如果出现了说明逻辑有问题
+                        }
+
+
+                    }
+                    else {
+                        // 其他区域的常规显示 (standard, echo)
+                        // 状态标识 - 只有在非占领状态时才添加
+                        if (region.status !== 'occupied') {
+                            const statusIndicator = document.createElement('div');
+                            statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
+
+                            if (region.status === 'unexplored') {
+                                statusIndicator.textContent = t('unexploredRegion'); // 使用翻译
+                                statusIndicator.className += ' text-gray-100 dark:text-gray-300';
+                            } else if (region.status === 'explored') {
+                                statusIndicator.textContent = t('exploredRegion'); // 使用翻译 - 普通或回声区域已探索
+                                statusIndicator.className += ' text-green-600 dark:text-green-400';
+                            }
+
+                            regionElement.appendChild(statusIndicator);
+                        }
+
+                        // 如果是回声区域，添加标识 (无论状态，但已占领时图标可能被卡牌覆盖)
+                        if (region.type === 'echo') { // echo区域始终有回声标识，无论是否占领或探索
+                            const typeIndicator = document.createElement('div');
+                            // 将标识放在左上角，避免和等级或卡牌内容重叠
+                            typeIndicator.className = 'absolute top-1 right-1 w-2 h-2 rounded-full bg-green-400 dark:bg-green-300';
+                            regionElement.appendChild(typeIndicator);
+                        }
+
+
+                        // 如果是占领状态，显示卡牌和得分
+                        if (region.status === 'occupied' && region.occupyCard) {
+                            const card = region.occupyCard;
+
+                            // 卡牌信息（中间）
+                            const cardInfo = document.createElement('div');
+                            cardInfo.className = 'flex flex-col items-center justify-center';
+
+                            // 卡牌中心显示
+                            const cardRank = document.createElement('div');
+                            cardRank.className = 'text-lg font-bold';
+                            cardRank.textContent = card.rank;
+
+                            const cardSuit = document.createElement('div');
+                            cardSuit.className = `${card.suit} text-2xl`;
+                            cardSuit.textContent = SUIT_SYMBOLS[card.suit];
+
+                            cardInfo.appendChild(cardRank);
+                            cardInfo.appendChild(cardSuit);
+                            regionElement.appendChild(cardInfo);
+
+                            // 得分显示（底部）
                             const pointsElement = document.createElement('div');
                             pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
                             pointsElement.textContent = `+${region.points}`;
@@ -2287,100 +2618,6 @@
                         }
                     }
                 }
-                else if (region.type === 'combat') {
-                    // 战争区域特殊显示
-                    if (region.status === 'unexplored') {
-                        // 未探索的战争区域显示为???，类似奇观
-                        const unknownElement = document.createElement('div');
-                        unknownElement.className = 'text-lg font-bold text-white text-center';
-                        unknownElement.textContent = '???';
-                        regionElement.appendChild(unknownElement);
-                    }
-                    else if (region.status === 'explored') {
-                        // 已探索的战争区域显示战争名称、解除条件和效果
-                        const nameElement = document.createElement('div');
-                        nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
-                        nameElement.textContent = region.combatData.name;
-                        regionElement.appendChild(nameElement);
-                        
-                        // 显示解除条件
-                        const conditionElement = document.createElement('div');
-                        conditionElement.className = 'text-xs text-center';
-                        conditionElement.textContent = region.combatData.requirement.display;
-                        regionElement.appendChild(conditionElement);
-                        
-                        // 显示战争效果
-                        const effectElement = document.createElement('div');
-                        effectElement.className = 'text-xs text-center mt-1 px-1 text-red-500 dark:text-red-400';
-                        effectElement.textContent = region.combatData.effect.name;
-                        regionElement.appendChild(effectElement);
-                        
-                        // 添加"点击解除"提示
-                        const clickPrompt = document.createElement('div');
-                        clickPrompt.className = 'text-xs text-center mt-1 animate-pulse';
-                        clickPrompt.textContent = '点击解除';
-                        regionElement.appendChild(clickPrompt);
-                    }
-                }
-                else {
-                    // 其他区域的常规显示
-                    // 状态标识 - 只有在非占领状态时才添加
-                    if (region.status !== 'occupied') {
-                        const statusIndicator = document.createElement('div');
-                        statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
-                        
-                        if (region.status === 'unexplored') {
-                            statusIndicator.textContent = '未探索';
-                            statusIndicator.className += ' text-gray-100 dark:text-gray-300';
-                        } else if (region.status === 'explored') {
-                            if (region.type === 'forgotten') {
-                                statusIndicator.textContent = '遗忘区域';
-                                statusIndicator.className += ' text-gray-500 dark:text-gray-400';
-                            } else {
-                                statusIndicator.textContent = '可占领';
-                                statusIndicator.className += ' text-green-600 dark:text-green-400';
-                            }
-                        }
-                        
-                        regionElement.appendChild(statusIndicator);
-                    }
-                    
-                    // 如果是回声区域，添加标识
-                    if (region.type === 'echo' && region.status !== 'occupied') {
-                        const typeIndicator = document.createElement('div');
-                        typeIndicator.className = 'absolute top-1 right-1 w-2 h-2 rounded-full bg-green-400 dark:bg-green-300';
-                        regionElement.appendChild(typeIndicator);
-                    }
-                    
-                    // 如果是占领状态，显示卡牌和得分
-                    if (region.status === 'occupied' && region.occupyCard) {
-                        const card = region.occupyCard;
-                        
-                        // 卡牌信息（中间）
-                        const cardInfo = document.createElement('div');
-                        cardInfo.className = 'flex flex-col items-center justify-center';
-                        
-                        // 卡牌中心显示
-                        const cardRank = document.createElement('div');
-                        cardRank.className = 'text-lg font-bold';
-                        cardRank.textContent = card.rank;
-                        
-                        const cardSuit = document.createElement('div');
-                        cardSuit.className = `${card.suit} text-2xl`;
-                        cardSuit.textContent = SUIT_SYMBOLS[card.suit];
-                        
-                        cardInfo.appendChild(cardRank);
-                        cardInfo.appendChild(cardSuit);
-                        regionElement.appendChild(cardInfo);
-                        
-                        // 得分显示（底部）
-                        const pointsElement = document.createElement('div');
-                        pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
-                        pointsElement.textContent = `+${region.points}`;
-                        regionElement.appendChild(pointsElement);
-                    }
-                }
-            }
             
             // 弃牌（支持多选）
             function discardCard() {
@@ -2500,41 +2737,70 @@
             function endTurn() {
                 // 获取当前手牌上限
                 const currentHandLimit = getCurrentHandLimit();
-                
+
                 // 如果手牌已满且牌库还有牌，提示玩家先弃牌
                 if (gameState.hand.length >= currentHandLimit && gameState.deck.length > 0) {
                     showDiscardPrompt();
                     return;
                 }
-                
+
+                // --- 新增：处理未解除的战争区域 ---
+                const unresolvedCombatZones = [];
+                for (const pathId of PATHS) {
+                    for (let i = 0; i < gameState.regions[pathId].length; i++) {
+                        const region = gameState.regions[pathId][i];
+                        // 查找已探索的战争区域且仍然阻塞下一格的区域
+                        if (region.status === 'explored' &&
+                            region.type === 'combat' &&
+                            region.combatData &&
+                            region.combatData.blocking) // 理论上已探索未解除的战争区blocking应该为true
+                        {
+                            unresolvedCombatZones.push({ pathId: pathId, index: i });
+                        }
+                    }
+                }
+
+                // 对每个未解除的战争区域应用惩罚并转换为遗忘区域
+                if (unresolvedCombatZones.length > 0) {
+                    addLogEntry("回合结束，处理未解除的战争区域...");
+                    for (const { pathId, index } of unresolvedCombatZones) {
+                        const region = gameState.regions[pathId][index];
+                        // 调用处理惩罚的函数，这将应用效果并转换为遗忘区域
+                        resolveCombatWithPenalty(pathId, index);
+                        // resolveCombatWithPenalty 内部会更新区域状态和日志
+                    }
+                }
+                // --- 新增结束 ---
+
+
                 // 计算回合得分和奇观效果
                 let turnPoints = 0;
                 let extraDraws = 0;  // 记录奇观提供的额外抽牌次数
                 let wonderEffects = []; // 记录激活的奇观效果
                 let lossEffects = []; // 记录收入损失效果
-                
+
                 // 遍历所有区域，结算占领区域的分数和奇观效果
                 for (const pathId of PATHS) {
                     // 计算当前路径的总收入（不含收入损失）
                     let pathIncome = 0;
-                    
+
                     for (const region of gameState.regions[pathId]) {
-                        // 累计该路径的所有收入
+                        // 累计该路径的所有收入 (只计算占领区域)
                         if (region.status === 'occupied' && region.points > 0) {
                             pathIncome += region.points;
                         }
-                        
-                        // 处理奇观特殊效果
+
+                        // 处理奇观特殊效果 (仅针对占领状态的奇观)
                         if (region.status === 'occupied' && region.type === 'wonder' && region.wonderData && region.wonderEffect) {
                             const effect = region.wonderEffect;
-                            
-                            // 处理抽卡效果
+
+                            // 处理抽卡效果 (记录下来，稍后统一抽牌)
                             if (effect.type === 'draw') {
                                 extraDraws += effect.value;
                                 wonderEffects.push(`「${region.wonderData.name}」: 多抽${effect.value}张`);
                             }
-                            
-                            // 处理花色加成效果
+
+                            // 处理花色加成效果 (重新计算分数并记录)
                             if (effect.type === 'suit_bonus') {
                                 // 重新计算花色数量和得分
                                 if (effect.formula === 'squared') {
@@ -2545,114 +2811,133 @@
                                             suitCount++;
                                         }
                                     }
-                                    
+
                                     // 使用对应倍率×n²公式计算得分
                                     const newPoints = effect.multiplier * (suitCount * suitCount);
-                                    
-                                    // 更新区域得分
+
+                                    // 更新区域得分 (这个得分会在本次循环中的pathIncome += region.points;中被累加)
                                     region.points = newPoints;
-                                    
+
                                     // 记录效果描述
                                     wonderEffects.push(`「${region.wonderData.name}」: ${PATH_NAMES[effect.pathId]}路径上${SUIT_SYMBOLS[effect.suit]}(${suitCount}个): ${newPoints}分/回合`);
+
+                                    // 重新渲染这个奇观的显示，以更新分数
+                                    // 我们在循环结束前统一更新区域显示，所以这里不需要
+                                    // updateRegionDisplay(pathId, i); // 这里的 i 需要获取 region 在 pathId 数组中的实际索引
                                 } else {
-                                    wonderEffects.push(`「${region.wonderData.name}」: ${PATH_NAMES[effect.pathId]}路径上的${SUIT_SYMBOLS[effect.suit]}收获效果`);
+                                    // 如果是其他类型的花色收获效果 (虽然目前只有 squared)
+                                    wonderEffects.push(`「${region.wonderData.name}」: ${PATH_NAMES[effect.pathId]}路径上的${SUIT_SYMBOLS[effect.suit]}收获效果 (计算已包含在得分中)`);
                                 }
+                            } else {
+                                // Other wonder effects (draw, population, score, explore)
+                                if (effect.type === 'draw') wonderEffects.push(`「${region.wonderData.name}」: 多抽${effect.value}张`);
+                                if (effect.type === 'population') wonderEffects.push(`「${region.wonderData.name}」: 手牌上限+${effect.value}`);
+                                if (effect.type === 'score') wonderEffects.push(`「${region.wonderData.name}」: 每回合+${region.points}分`); // Use region.points for score effect
+                                if (effect.type === 'explore') { /* explore is immediate, log entry in processWonderEffects */ }
                             }
+                            // 其他奇观效果（如人口）在 calculatePointsPerTurn 或 getCurrentHandLimit 中处理，不需要在这里累加分数
                         }
                     }
-                    
-                    // 处理收入损失效果（掠夺）
-                    if (gameState.incomeLoss && gameState.incomeLoss[pathId]) {
-                        const lossAmount = gameState.incomeLoss[pathId];
-                        const actualLoss = Math.min(lossAmount, pathIncome); // 最多损失当前路径的所有收入
-                        
+
+                    // --- 新增：结算掠夺惩罚 ---
+                    if (gameState.pillagePenalties && gameState.pillagePenalties[pathId] && gameState.pillagePenalties[pathId].length > 0) {
+                        // 累加该路径所有的掠夺倍率
+                        const totalMultiplier = gameState.pillagePenalties[pathId].reduce((sum, mult) => sum + mult, 0);
+                        // 计算损失点数 (路径收入 * 总倍率)，损失最多不超过当前路径总收入（收入不会变成负数）
+                        const lossAmount = pathIncome * totalMultiplier; // 计算总损失点数
+                        const actualLoss = Math.min(lossAmount, pathIncome); // 实际损失不超过当前收入
+
                         if (actualLoss > 0) {
-                            lossEffects.push(`${PATH_NAMES[pathId]}路径损失${actualLoss}分收入`);
-                            pathIncome -= actualLoss;
+                            addLogEntry(`「掠夺」效果结算: ${PATH_NAMES[pathId]}路径收入 ${pathIncome}分，总倍率 ${totalMultiplier}x，实际损失 ${actualLoss}分`);
+                            pathIncome -= actualLoss; // 从路径收入中扣除损失
+                        } else if (lossAmount > 0) { // 如果损失点数 > 0 但实际损失为0 (因为 pathIncome 是 0)
+                            addLogEntry(`「掠夺」效果结算: ${PATH_NAMES[pathId]}路径收入 ${pathIncome}分，总倍率 ${totalMultiplier}x，无实际收入损失`);
                         }
+                        // 注意：即使 lossAmount 是 0 (例如 pathIncome 是 0)，recordPillagePenalty 仍然记录了惩罚触发日志。这里是结算日志。
                     }
-                    
+
                     // 将该路径的收入加入总得分
                     turnPoints += pathIncome;
                 }
-                
+
+
+                gameState.pillagePenalties = {};
+
+                // 重新渲染所有区域，确保花色收获奇观的分数更新显示
+                updateAllRegionsDisplay();
+
                 // 清除本回合的收入损失效果，因为已经处理过了
                 gameState.incomeLoss = {};
-                
+
+
                 // 更新总分
                 gameState.score += turnPoints;
                 scoreDisplay.textContent = gameState.score;
-                
-                // 更新右下角信息栏
+
+                // 更新右下角信息栏 (包括每回合得分)
                 updateCornerInfo();
-                
+
                 // 增加回合数
                 gameState.turn++;
                 turnCounter.textContent = gameState.turn;
-                
-                // 记录操作和奇观效果
-                let logMessage = `${t('endTurn')}: +${turnPoints}分`;
+
+                // 记录操作和奇观效果、收入损失
+                let logMessage = `${t('turnEnded', {points: turnPoints})}`;
                 if (wonderEffects.length > 0) {
-                    logMessage += ` (奇观效果: ${wonderEffects.join(", ")})`;
+                    logMessage += ` (奇观: ${wonderEffects.join(", ")})`;
                 }
+                /*
+                if (lossEffects.length > 0) {
+                    logMessage += ` (惩罚: ${lossEffects.join(", ")})`;
+                }*/
                 addLogEntry(logMessage);
-                
+
                 // 抽牌处理 - 先抽基础牌，然后抽奇观提供的额外牌
                 let cardsDrawn = [];
-                
-                // 基础抽牌 - 每回合抽1张
-                if (gameState.deck.length > 0) {
-                    const card = drawCard();
-                    gameState.hand.push(card);
-                    cardsDrawn.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+
+                // 基础抽牌 - 每回合抽1张 (即使牌库空也尝试，drawCard会返回null)
+                const baseDrawCard = drawCard();
+                if (baseDrawCard) {
+                    gameState.hand.push(baseDrawCard);
+                    cardsDrawn.push(`${baseDrawCard.rank}${SUIT_SYMBOLS[baseDrawCard.suit]}`);
                 }
-                
+
+
                 // 奇观额外抽牌
-                for (let i = 0; i < extraDraws && gameState.deck.length > 0; i++) {
-                    const card = drawCard();
-                    gameState.hand.push(card);
-                    cardsDrawn.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                for (let i = 0; i < extraDraws; i++) {
+                    const extraCard = drawCard();
+                    if (extraCard) {
+                        gameState.hand.push(extraCard);
+                        cardsDrawn.push(`${extraCard.rank}${SUIT_SYMBOLS[extraCard.suit]}`);
+                    } else {
+                        // 如果牌库抽空了，停止额外抽牌
+                        break;
+                    }
                 }
-                
+
+
                 // 记录抽牌
                 if (cardsDrawn.length > 0) {
                     const drawMessage = cardsDrawn.length === 1
                         ? `抽了一张牌: ${cardsDrawn[0]}`
                         : `抽了${cardsDrawn.length}张牌: ${cardsDrawn.join(", ")}`;
                     addLogEntry(drawMessage);
+                } else if (gameState.deck.length === 0) {
+                    // 如果牌库空了，且没有抽到牌，记录一下
+                    addLogEntry(`牌库已空，没有抽到牌`);
                 }
-                
-                // 牌库空了的处理
-                if (gameState.deck.length === 0) {
-                    // 检查是否还有手牌
-                    if (gameState.hand.length === 0) {
-                        // 没有手牌也没有牌库，游戏结束
-                        gameState.gameOver = true;
-                        finalScoreDisplay.textContent = gameState.score;
-                        resultModal.classList.remove('hidden');
-                        
-                        // 记录游戏结束
-                        addLogEntry(`游戏结束! 最终得分: ${gameState.score}`);
-                    } else {
-                        // 提示玩家牌库已空
-                        showMessage('牌库已空，请继续使用手牌');
-                        addLogEntry(`牌库已空，继续使用手牌`);
-                    }
-                }
-                
+
+
                 // 重新渲染手牌
                 renderHand();
-                
-                // 显示消息
-                let turnMessage = t('turnEnded', {points: turnPoints});
-                if (extraDraws > 0) {
-                    turnMessage += ` 额外抽了${extraDraws}张牌`;
-                }
-                showMessage(turnMessage);
-                
+
+                // 显示消息 (可以简化，主要信息已经在日志里)
+                // showMessage(t('turnEnded', {points: turnPoints}));
+
+
                 // 检查游戏是否结束
                 checkGameOver();
-                
+
                 // 保存游戏状态到历史记录
                 addToHistory(saveGameState());
             }
@@ -2925,9 +3210,12 @@
                     turn: gameState.turn,
                     currentSeed: gameState.currentSeed,
                     regions: JSON.parse(JSON.stringify(gameState.regions)),
-                    gameOver: gameState.gameOver
+                    gameOver: gameState.gameOver,
+                    conqueredPaths: gameState.conqueredPaths ? {...gameState.conqueredPaths} : {}, // Save conquered paths
+                    pillagePenalties: gameState.pillagePenalties ? JSON.parse(JSON.stringify(gameState.pillagePenalties)) : {} // <-- 新增：保存掠夺惩罚
                 };
             }
+
             
             // 将新状态添加到历史记录
             function addToHistory(state) {
@@ -2955,7 +3243,9 @@
                 gameState.currentSeed = state.currentSeed;
                 gameState.regions = JSON.parse(JSON.stringify(state.regions));
                 gameState.gameOver = state.gameOver;
-                
+                gameState.conqueredPaths = state.conqueredPaths ? {...state.conqueredPaths} : {}; // Restore conquered paths
+                gameState.pillagePenalties = state.pillagePenalties ? JSON.parse(JSON.stringify(state.pillagePenalties)) : {}; // <-- 新增：恢复掠夺惩罚
+
                 // 重置选择状态
                 resetSelectionState();
                 
@@ -3661,6 +3951,297 @@
                 // 开始游戏
                 startGame(seedFromURL);
             }
+
+            function renderHistoryBoard(state) {
+                const historyBoardElement = document.getElementById('history-board');
+                if (!historyBoardElement) return;
+
+                historyBoardElement.innerHTML = ''; // 清空面板
+
+                // 创建路径标题
+                const pathTitles = document.createElement('div');
+                pathTitles.className = 'grid grid-cols-4 gap-2 mb-2 text-center';
+                // 注意：这里需要调整宽度，使其与下方区域格子对齐
+                pathTitles.style.width = 'fit-content'; // 或者一个固定的宽度
+                pathTitles.style.margin = '0 auto'; // 居中
+
+                PATHS.forEach(pathId => {
+                    const title = document.createElement('div');
+                    title.className = `text-white rounded px-1 py-1 text-center font-bold text-xs w-16 md:w-20 mx-auto flex items-center justify-center bg-${pathId}`; // 使用路径颜色
+                    title.textContent = PATH_NAMES[pathId]; // 使用翻译的路径名称
+                    pathTitles.appendChild(title);
+                });
+                historyBoardElement.appendChild(pathTitles);
+
+
+                // 创建区域容器，模拟主游戏区域的结构
+                const gameAreaContainer = document.createElement('div');
+                gameAreaContainer.className = 'flex justify-center';
+                const regionsGrid = document.createElement('div');
+                regionsGrid.className = 'grid grid-cols-4 gap-2';
+                regionsGrid.style.width = 'fit-content'; // 或者一个固定的宽度
+
+                // 为每条路径创建列容器
+                const pathContainers = {};
+                PATHS.forEach(pathId => {
+                    pathContainers[pathId] = document.createElement('div');
+                    pathContainers[pathId].className = 'flex flex-col gap-1';
+                    regionsGrid.appendChild(pathContainers[pathId]);
+                });
+
+                // 遍历所有区域，并渲染到对应的路径容器中 (倒序渲染)
+                PATHS.forEach(pathId => {
+                    const pathRegions = state.regions[pathId];
+                    for (let i = 12; i >= 0; i--) { // 从13到1
+                        const region = pathRegions[i];
+                        const regionElement = document.createElement('div');
+
+                        // 使用与主游戏区域相同的尺寸和基础样式
+                        regionElement.className = 'rounded-md w-16 h-24 md:w-20 md:h-30 border shadow-md flex flex-col items-center justify-center relative';
+
+                        // 根据区域状态和类型设置样式 (复制 updateRegionDisplay 中的逻辑)
+                        if (region.status === 'unexplored') {
+                            regionElement.classList.add('bg-gray-400', 'dark:bg-gray-700');
+                        } else if (region.status === 'explored') {
+                            regionElement.classList.add('bg-white', 'dark:bg-gray-600');
+                            if (region.type === 'forgotten') {
+                                regionElement.classList.add('bg-gray-200', 'dark:bg-gray-700', 'opacity-75');
+                            }
+                        } else if (region.status === 'occupied') {
+                            regionElement.classList.add('bg-blue-100', 'dark:bg-blue-800');
+                        }
+
+                        if (region.type === 'echo' && region.status !== 'occupied') {
+                            regionElement.classList.add('bg-green-200', 'dark:bg-green-800');
+                        }
+                        if (region.type === 'wonder' && region.wonderData) {
+                            const tierClass = `wonder-${region.wonderData.tier}`;
+                            regionElement.classList.add(tierClass);
+                        }
+                        if (region.type === 'combat' && region.combatData) {
+                            const tierClass = `combat-${region.combatData.tier}`;
+                            regionElement.classList.add(tierClass);
+                        }
+
+
+                        // 区域等级显示
+                        const rankElement = document.createElement('div');
+                        rankElement.className = 'text-sm font-bold absolute top-1 left-1';
+                        rankElement.textContent = i + 1; // 显示数字1-13
+                        regionElement.appendChild(rankElement);
+
+
+                        // 根据区域类型和状态添加不同的内容 (复制 updateRegionDisplay 中的逻辑)
+                        if (region.type === 'wonder' && region.wonderData) {
+                            if (region.status === 'unexplored') {
+                                const unknownElement = document.createElement('div');
+                                unknownElement.className = 'text-lg font-bold text-white text-center';
+                                unknownElement.textContent = '???';
+                                regionElement.appendChild(unknownElement);
+                            }
+                            else if (region.status === 'explored') {
+                                const nameElement = document.createElement('div');
+                                nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                                nameElement.textContent = region.wonderData.name;
+                                regionElement.appendChild(nameElement);
+
+                                const conditionElement = document.createElement('div');
+                                conditionElement.className = 'text-xs text-center';
+                                conditionElement.textContent = '需要: J、Q、K、A或红心';
+                                regionElement.appendChild(conditionElement);
+
+                                const effectElement = document.createElement('div');
+                                effectElement.className = 'text-xs text-center mt-1 px-1';
+                                const effectText = region.wonderData.effect.name;
+                                effectElement.textContent = `[${effectText}]`;
+                                regionElement.appendChild(effectElement);
+                            }
+                            else if (region.status === 'occupied') {
+                                const nameElement = document.createElement('div');
+                                nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                                nameElement.textContent = region.wonderData.name;
+                                regionElement.appendChild(nameElement);
+
+                                if (region.occupyCard) {
+                                    const card = region.occupyCard;
+                                    const cardElement = document.createElement('div');
+                                    cardElement.className = 'flex items-center justify-center';
+                                    const cardRank = document.createElement('div'); cardRank.className = 'text-sm font-bold'; cardRank.textContent = card.rank;
+                                    const cardSuit = document.createElement('div'); cardSuit.className = `${card.suit} text-lg`; cardSuit.textContent = SUIT_SYMBOLS[card.suit];
+                                    cardElement.appendChild(cardRank); cardElement.appendChild(cardSuit); regionElement.appendChild(cardElement);
+                                }
+                                const effectElement = document.createElement('div');
+                                effectElement.className = 'text-xs text-center mt-1 px-1';
+                                const effectText = region.wonderData.effect.name;
+                                effectElement.textContent = `[${effectText}]`;
+                                regionElement.appendChild(effectElement);
+
+                                if (region.points > 0) {
+                                    const pointsElement = document.createElement('div');
+                                    pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
+                                    pointsElement.textContent = `+${region.points}`;
+                                    regionElement.appendChild(pointsElement);
+                                }
+                            }
+                        }
+                        else if (region.type === 'combat' && region.combatData) {
+                            if (region.status === 'unexplored') {
+                                const unknownElement = document.createElement('div');
+                                unknownElement.className = 'text-lg font-bold text-white text-center';
+                                unknownElement.textContent = '???';
+                                regionElement.appendChild(unknownElement);
+                            } else if (region.status === 'explored') {
+                                const nameElement = document.createElement('div');
+                                nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                                nameElement.textContent = region.combatData.name;
+                                regionElement.appendChild(nameElement);
+                                const conditionElement = document.createElement('div');
+                                conditionElement.className = 'text-xs text-center';
+                                conditionElement.textContent = region.combatData.requirement.display;
+                                regionElement.appendChild(conditionElement);
+                                const effectElement = document.createElement('div');
+                                effectElement.className = 'text-xs text-center mt-1 px-1 text-red-500 dark:text-red-400';
+                                effectElement.textContent = region.combatData.effect.name;
+                                regionElement.appendChild(effectElement);
+                                // No click prompt in history view
+                            }
+                        }
+                        else if (region.type === 'forgotten') {
+                            const statusIndicator = document.createElement('div');
+                            statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
+                            statusIndicator.textContent = t('forgottenRegion');
+                            statusIndicator.className += ' text-gray-500 dark:text-gray-400';
+                            regionElement.appendChild(statusIndicator);
+                        }
+                        else { // standard, echo
+                            if (region.status !== 'occupied') {
+                                const statusIndicator = document.createElement('div');
+                                statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
+                                if (region.status === 'unexplored') {
+                                    statusIndicator.textContent = t('unexploredRegion');
+                                    statusIndicator.className += ' text-gray-100 dark:text-gray-300';
+                                } else if (region.status === 'explored') {
+                                    statusIndicator.textContent = t('exploredRegion');
+                                    statusIndicator.className += ' text-green-600 dark:text-green-400';
+                                }
+                                regionElement.appendChild(statusIndicator);
+                            }
+                            if (region.type === 'echo') {
+                                const typeIndicator = document.createElement('div');
+                                typeIndicator.className = 'absolute top-1 right-1 w-2 h-2 rounded-full bg-green-400 dark:bg-green-300';
+                                regionElement.appendChild(typeIndicator);
+                            }
+                            if (region.status === 'occupied' && region.occupyCard) {
+                                const card = region.occupyCard;
+                                const cardInfo = document.createElement('div');
+                                cardInfo.className = 'flex flex-col items-center justify-center';
+                                const cardRank = document.createElement('div'); cardRank.className = 'text-lg font-bold'; cardRank.textContent = card.rank;
+                                const cardSuit = document.createElement('div'); cardSuit.className = `${card.suit} text-2xl`; cardSuit.textContent = SUIT_SYMBOLS[card.suit];
+                                cardInfo.appendChild(cardRank); cardInfo.appendChild(cardSuit); regionElement.appendChild(cardInfo);
+
+                                const pointsElement = document.createElement('div');
+                                pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
+                                pointsElement.textContent = `+${region.points}`;
+                                regionElement.appendChild(pointsElement);
+                            }
+                        }
+
+
+                        pathContainers[pathId].appendChild(regionElement);
+                    }
+                });
+
+                gameAreaContainer.appendChild(regionsGrid);
+                historyBoardElement.appendChild(gameAreaContainer);
+            }
+
+            // 在历史浏览器打开时调用此函数
+            document.getElementById('history-btn').addEventListener('click', () => {
+                const historyModal = document.getElementById('history-modal');
+                if (historyModal) {
+                    // 重置浏览索引到当前状态
+                    currentBrowsingIndex = currentHistoryIndex;
+                    updateHistoryDisplay(); // 更新历史浏览器显示
+
+                    historyModal.classList.remove('hidden');
+                }
+            });
+
+            // 更新历史浏览器显示的函数
+            function updateHistoryDisplay() {
+                if (currentBrowsingIndex < 0 || currentBrowsingIndex >= history.length) {
+                    console.error("Invalid history index:", currentBrowsingIndex);
+                    return;
+                }
+
+                const state = history[currentBrowsingIndex];
+                const historyTurnEl = document.getElementById('history-turn');
+                const historyIndexEl = document.getElementById('history-index');
+                const historyTotalEl = document.getElementById('history-total');
+                const historyScoreEl = document.getElementById('history-score');
+                const historyActionDescEl = document.getElementById('history-action-desc');
+                const historyPrevBtn = document.getElementById('history-prev');
+                const historyNextBtn = document.getElementById('history-next');
+
+
+                historyTurnEl.textContent = state.turn;
+                historyIndexEl.textContent = currentBrowsingIndex;
+                historyTotalEl.textContent = history.length -1; // 显示总操作数 (初始状态索引0不计入操作)
+                historyScoreEl.textContent = state.score;
+
+                // TODO: Fetch and display action description based on index and previous state? Or store descriptions in history?
+                // For now, display the log message for this step (if available).
+                // The gameLogData records *after* the action, so index 'i' corresponds to the state *after* logData[i-1]'s action.
+                const logIndex = currentBrowsingIndex > 0 ? currentBrowsingIndex -1 : 0; // Initial state (0) has no action description
+                if (gameLogData.length > logIndex) {
+                    historyActionDescEl.textContent = currentBrowsingIndex === 0 ? "游戏开始" : gameLogData[logIndex].message.replace(/<[^>]*>/g, ''); // 移除HTML标签
+                } else {
+                    historyActionDescEl.textContent = "---";
+                }
+
+
+                renderHistoryBoard(state); // 渲染面板
+
+                // 更新前进/后退按钮状态
+                historyPrevBtn.disabled = currentBrowsingIndex <= 0;
+                historyPrevBtn.classList.toggle('opacity-50', currentBrowsingIndex <= 0);
+                historyNextBtn.disabled = currentBrowsingIndex >= history.length - 1;
+                historyNextBtn.classList.toggle('opacity-50', currentBrowsingIndex >= history.length - 1);
+            }
+
+
+            // 添加历史浏览器前进/后退按钮事件
+            document.getElementById('history-prev').addEventListener('click', () => {
+                if (currentBrowsingIndex > 0) {
+                    currentBrowsingIndex--;
+                    updateHistoryDisplay();
+                }
+            });
+
+            document.getElementById('history-next').addEventListener('click', () => {
+                if (currentBrowsingIndex < history.length - 1) {
+                    currentBrowsingIndex++;
+                    updateHistoryDisplay();
+                }
+            });
+
+            // 历史浏览器选择当前状态按钮
+            document.getElementById('history-select').addEventListener('click', () => {
+                if (currentBrowsingIndex >= 0 && currentBrowsingIndex < history.length) {
+                    // 恢复到选中的历史状态
+                    currentHistoryIndex = currentBrowsingIndex; // 设置当前历史索引
+                    restoreGameState(history[currentHistoryIndex]); // 恢复游戏状态
+
+                    // 关闭历史浏览器
+                    const historyModal = document.getElementById('history-modal');
+                    if (historyModal) {
+                        historyModal.classList.add('hidden');
+                    }
+
+                    // 提示用户已恢复状态
+                    showMessage(`已恢复到回合 ${gameState.turn} 的状态`);
+                }
+            });
             
             // 当页面加载完成后初始化游戏
             window.addEventListener('DOMContentLoaded', init);
@@ -3668,6 +4249,7 @@
     </div>
 </body>
 </html>
+
 
 
 

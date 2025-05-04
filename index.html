@@ -126,32 +126,77 @@
             background-color: theme('colors.echo');
         }
         
-        /* 奇观样式 */
+        /* 奇观样式 - 使用白色背景和加粗彩色边框 */
         .wonder-orange {
-            background-color: #FF9800;
-            color: #fff;
+            background-color: #FFFFFF;
+            color: #000;
+            border: 6px solid #FF9800;
+            box-shadow: 0 0 0 2px #FF9800, inset 0 0 0 1px #FF9800;
+            position: relative;
+            z-index: 1;
         }
         
         .wonder-purple {
-            background-color: #9C27B0;
-            color: #fff;
+            background-color: #FFFFFF;
+            color: #000;
+            border: 6px solid #9C27B0;
+            box-shadow: 0 0 0 2px #9C27B0, inset 0 0 0 1px #9C27B0;
+            position: relative;
+            z-index: 1;
         }
         
         .wonder-blue {
-            background-color: #2196F3;
-            color: #fff;
+            background-color: #FFFFFF;
+            color: #000;
+            border: 6px solid #2196F3;
+            box-shadow: 0 0 0 2px #2196F3, inset 0 0 0 1px #2196F3;
+            position: relative;
+            z-index: 1;
         }
         
         .dark .wonder-orange {
-            background-color: #E65100;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 6px solid #FF9800;
+            box-shadow: 0 0 0 2px #FF9800, inset 0 0 0 1px #FF9800;
         }
         
         .dark .wonder-purple {
-            background-color: #6A1B9A;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 6px solid #9C27B0;
+            box-shadow: 0 0 0 2px #9C27B0, inset 0 0 0 1px #9C27B0;
         }
         
         .dark .wonder-blue {
-            background-color: #0D47A1;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 6px solid #2196F3;
+            box-shadow: 0 0 0 2px #2196F3, inset 0 0 0 1px #2196F3;
+        }
+        
+        /* 奇观闪光效果 */
+        .wonder-orange::before, .wonder-purple::before, .wonder-blue::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border-radius: inherit;
+            z-index: -1;
+        }
+        
+        .wonder-orange::before {
+            box-shadow: 0 0 10px 2px rgba(255, 152, 0, 0.6);
+        }
+        
+        .wonder-purple::before {
+            box-shadow: 0 0 10px 2px rgba(156, 39, 176, 0.6);
+        }
+        
+        .wonder-blue::before {
+            box-shadow: 0 0 10px 2px rgba(33, 150, 243, 0.6);
         }
         
         /* 探索线路样式 */
@@ -366,6 +411,35 @@
         
         <!-- 当前选择的行动提示 -->
         <div id="action-info" class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400 h-6"></div>
+        
+        <!-- 右下角信息栏 -->
+        <div class="fixed bottom-4 right-4 z-30">
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-2 shadow-md">
+                <div class="flex items-center space-x-3">
+                    <div class="font-bold text-sm"><span>得分</span>: <span id="score-corner" class="text-primary">0</span></div>
+                    <div class="text-sm"><span>回合</span>: <span id="turn-corner">1</span></div>
+                </div>
+                <div class="text-xs text-gray-600 dark:text-gray-400 flex space-x-2">
+                    <div><span>牌堆</span>: <span id="remaining-corner">47</span></div>
+                    <div><span>弃牌</span>: <span id="discard-corner">0</span></div>
+                </div>
+                <div class="text-xs mt-1 font-semibold text-green-600 dark:text-green-400">
+                    <span>每回合</span>: <span id="points-per-turn">+0</span>分
+                </div>
+            </div>
+        </div>
+        
+        <!-- 路径征服提示弹窗 -->
+        <div id="conquest-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full mx-4 text-center transform scale-100 transition-transform duration-300">
+                <h2 class="text-2xl font-bold mb-4 text-yellow-500 dark:text-yellow-400">征服成就!</h2>
+                <p id="conquest-message" class="text-lg mb-6"></p>
+                <p class="mb-4 text-primary font-bold text-xl">+<span id="conquest-points">0</span>分</p>
+                <button id="conquest-close" class="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg">
+                    继续游戏
+                </button>
+            </div>
+        </div>
         
         <!-- 游戏结果弹窗 -->
         <div id="result-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
@@ -711,21 +785,19 @@
                 const wonderNameIndex = Math.floor(seededRandom() * WONDER_NAMES.length);
                 const wonderName = WONDER_NAMES[wonderNameIndex];
                 
-                // 根据等级确定奇观强度，等级越高强度越高的概率越大
-                let tierWeights;
-                if (rank >= 9) {
-                    // 9级以上: 橙色>紫色>蓝色
-                    tierWeights = [5, 3, 2]; // 橙色, 紫色, 蓝色
-                } else if (rank >= 6) {
-                    // 6-8级: 紫色>蓝色>橙色
-                    tierWeights = [2, 5, 3]; // 橙色, 紫色, 蓝色
+                // 根据等级确定奇观强度，明确指定不同等级对应的奇观类型
+                let selectedTierKey;
+                if (rank >= 12) {
+                    // 12-13级: 必定是橙色奇观
+                    selectedTierKey = 'orange';
+                } else if (rank >= 9) {
+                    // 9-11级: 必定是紫色奇观
+                    selectedTierKey = 'purple';
                 } else {
-                    // 其他等级: 蓝色>紫色>橙色
-                    tierWeights = [1, 3, 6]; // 橙色, 紫色, 蓝色
+                    // 6-8级: 必定是蓝色奇观
+                    selectedTierKey = 'blue';
                 }
                 
-                const tierKeys = Object.keys(WONDER_TIERS);
-                const selectedTierKey = weightedRandomSelect(tierKeys, tierWeights);
                 const tier = WONDER_TIERS[selectedTierKey];
                 
                 // 选择奇观效果
@@ -1042,6 +1114,9 @@
                 gameState.score += points;
                 scoreDisplay.textContent = gameState.score;
                 
+                // 更新右下角信息栏
+                updateCornerInfo();
+                
                 // 更新区域状态
                 region.status = 'explored';
                 
@@ -1131,14 +1206,25 @@
                     case 'spade_bonus':
                     case 'diamond_bonus':
                     case 'club_bonus':
-                        // 花色收获效果：该路径上的对应花色每回合按3×n²计分
+                        // 花色收获效果：根据奇观等级，对该路径上的对应花色每回合计分
                         const suit = effect.type.split('_')[0]; // 'heart', 'spade', 'diamond', 'club'
+                        
+                        // 根据奇观等级设置不同的倍率
+                        let bonusMultiplier;
+                        if (wonderTier === 'orange') {
+                            bonusMultiplier = 6; // 橙色奇观：6×n²
+                        } else if (wonderTier === 'purple') {
+                            bonusMultiplier = 4; // 紫色奇观：4×n²
+                        } else {
+                            bonusMultiplier = 3; // 蓝色奇观：3×n²
+                        }
                         
                         region.wonderEffect = {
                             type: 'suit_bonus',
                             suit: suit,
                             pathId: pathId,
-                            formula: 'squared' // 使用3×n²公式
+                            formula: 'squared',
+                            multiplier: bonusMultiplier // 保存倍率
                         };
                         
                         // 计算当前路径上已有的该花色牌数
@@ -1149,9 +1235,9 @@
                             }
                         }
                         
-                        // 使用新公式：3 × (花色数量)²
-                        points = 3 * (suitCount * suitCount);
-                        effectDescription = `${PATH_NAMES[pathId]}路径上${SUIT_SYMBOLS[suit]}：3×数量²分/回合`;
+                        // 使用新公式：bonusMultiplier × (花色数量)²
+                        points = bonusMultiplier * (suitCount * suitCount);
+                        effectDescription = `${PATH_NAMES[pathId]}路径上${SUIT_SYMBOLS[suit]}：${bonusMultiplier}×数量²分/回合`;
                         break;
                 }
                 
@@ -1178,11 +1264,13 @@
                     // 检查卡牌是否满足奇观占领条件
                     if (!cardMeetsWonderCondition(card, region.wonderData)) {
                         const condition = region.wonderData.occupyCondition;
-                        let errorMsg = '';
+                        let errorMsg = '需要使用J、Q、K、A或红心占领此奇观';
                         
                         if (condition.type === 'rank') {
                             errorMsg = `需要使用${condition.display}占领此奇观`;
                         } else if (condition.type === 'suit') {
+                            errorMsg = `需要使用${condition.display}占领此奇观`;
+                        } else if (condition.type === 'multiple') {
                             errorMsg = `需要使用${condition.display}占领此奇观`;
                         }
                         
@@ -1288,6 +1376,9 @@
                 
                 // 重置选择状态
                 resetSelectionState();
+                
+                // 检查是否完成了整条路径的征服
+                checkPathConquest(pathId);
                 
                 // 保存游戏状态到历史记录
                 addToHistory(saveGameState());
@@ -1593,6 +1684,9 @@
                 // 更新总分
                 gameState.score += turnPoints;
                 scoreDisplay.textContent = gameState.score;
+                
+                // 更新右下角信息栏
+                updateCornerInfo();
                 
                 // 增加回合数
                 gameState.turn++;
@@ -1988,8 +2082,17 @@
                                 }
                             }
                             
-                            // 使用3×n²公式计算新的得分
-                            const newPoints = 3 * (suitCount * suitCount);
+                            // 根据奇观等级使用不同倍率计算新的得分
+                            let multiplier;
+                            if (region.wonderData.tier === 'orange') {
+                                multiplier = 6; // 橙色奇观：6×n²
+                            } else if (region.wonderData.tier === 'purple') {
+                                multiplier = 4; // 紫色奇观：4×n²
+                            } else {
+                                multiplier = 3; // 蓝色奇观：3×n²
+                            }
+                            
+                            const newPoints = multiplier * (suitCount * suitCount);
                             
                             // 如果得分发生变化，更新区域得分
                             if (region.points !== newPoints) {
@@ -2088,6 +2191,54 @@
                 }
             }
             
+            // 计算每回合总得分
+            function calculatePointsPerTurn() {
+                let totalPoints = 0;
+                
+                // 遍历所有区域，计算占领区域的分数
+                for (const pathId of PATHS) {
+                    for (const region of gameState.regions[pathId]) {
+                        // 累加所有占领区域的得分
+                        if (region.status === 'occupied' && region.points > 0) {
+                            totalPoints += region.points;
+                        }
+                    }
+                }
+                
+                return totalPoints;
+            }
+            
+            // 更新右下角信息栏
+            function updateCornerInfo() {
+                const scoreCorner = document.getElementById('score-corner');
+                const turnCorner = document.getElementById('turn-corner');
+                const remainingCorner = document.getElementById('remaining-corner');
+                const discardCorner = document.getElementById('discard-corner');
+                const pointsPerTurn = document.getElementById('points-per-turn');
+                
+                if (scoreCorner) scoreCorner.textContent = gameState.score;
+                if (turnCorner) turnCorner.textContent = gameState.turn;
+                if (remainingCorner) remainingCorner.textContent = gameState.deck.length;
+                if (discardCorner) discardCorner.textContent = gameState.discardPile.length;
+                
+                // 更新每回合得分
+                if (pointsPerTurn) {
+                    const points = calculatePointsPerTurn();
+                    pointsPerTurn.textContent = '+' + points;
+                    
+                    // 根据得分调整显示样式
+                    if (points >= 30) {
+                        pointsPerTurn.className = 'text-red-500 dark:text-red-400 font-bold';
+                    } else if (points >= 20) {
+                        pointsPerTurn.className = 'text-yellow-500 dark:text-yellow-400 font-bold';
+                    } else if (points > 0) {
+                        pointsPerTurn.className = 'text-green-600 dark:text-green-400 font-bold';
+                    } else {
+                        pointsPerTurn.className = 'text-gray-600 dark:text-gray-400';
+                    }
+                }
+            }
+            
             // 开始新游戏
             function startGame(seed = null) {
                 // 生成或使用提供的种子
@@ -2125,6 +2276,9 @@
                 remainingCardsDisplay.textContent = gameState.deck.length;
                 updateDiscardCount();
                 
+                // 更新右下角信息栏
+                updateCornerInfo();
+                
                 // 渲染手牌
                 renderHand();
                 
@@ -2142,6 +2296,79 @@
                 history = [];
                 currentHistoryIndex = -1;
                 addToHistory(saveGameState());
+            }
+            
+            // 检查是否完成了整条路径的征服
+            function checkPathConquest(pathId) {
+                // 首先检查该路径是否已经被完全征服
+                const path = gameState.regions[pathId];
+                const allOccupied = path.every(region => region.status === 'occupied');
+                
+                // 如果路径已经被完全征服，且没有被标记为已征服
+                if (allOccupied && !gameState.conqueredPaths) {
+                    // 初始化已征服路径记录
+                    if (!gameState.conqueredPaths) {
+                        gameState.conqueredPaths = {};
+                    }
+                    
+                    // 如果该路径已经被征服，则返回
+                    if (gameState.conqueredPaths[pathId]) {
+                        return;
+                    }
+                    
+                    // 标记该路径为已征服
+                    gameState.conqueredPaths[pathId] = true;
+                    
+                    // 计算奖励分数
+                    // 1. 基于随机种子选择一个花色
+                    const suitIndex = Math.floor(seededRandom() * SUITS.length);
+                    const randomSuit = SUITS[suitIndex];
+                    
+                    // 2. 计算该路径上该花色的数量
+                    let suitCount = 0;
+                    for (const region of path) {
+                        if (region.occupyCard && region.occupyCard.suit === randomSuit) {
+                            suitCount++;
+                        }
+                    }
+                    
+                    // 3. 计算奖励分数: 20 * num^2
+                    const bonusPoints = 20 * (suitCount * suitCount);
+                    
+                    // 更新游戏总分
+                    gameState.score += bonusPoints;
+                    scoreDisplay.textContent = gameState.score;
+                    
+                    // 更新右下角信息栏
+                    updateCornerInfo();
+                    
+                    // 准备并显示征服成就信息
+                    const pathName = PATH_NAMES[pathId];
+                    const conquestMessages = {
+                        'land': `您征服了整个${pathName}！大地在您的脚下臣服，文明的种子已经遍布每一寸土地。`,
+                        'ocean': `您征服了整个${pathName}！浩瀚的海洋已成为您的领地，舰队所向披靡。`,
+                        'desert': `您征服了整个${pathName}！荒芜之地也绽放出您文明的花朵，没有任何地方能阻挡您的扩张。`,
+                        'sky': `您征服了整个${pathName}！您的民族已经掌握了制空权，从云端俯瞰整个世界。`
+                    };
+                    
+                    // 显示征服弹窗
+                    const conquestModal = document.getElementById('conquest-modal');
+                    const conquestMessage = document.getElementById('conquest-message');
+                    const conquestPoints = document.getElementById('conquest-points');
+                    
+                    conquestMessage.textContent = conquestMessages[pathId];
+                    conquestPoints.textContent = bonusPoints;
+                    conquestModal.classList.remove('hidden');
+                    
+                    // 添加关闭按钮事件
+                    document.getElementById('conquest-close').addEventListener('click', () => {
+                        conquestModal.classList.add('hidden');
+                    }, { once: true });
+                    
+                    // 记录到游戏日志
+                    const suitSymbol = SUIT_SYMBOLS[randomSuit];
+                    addLogEntry(`<span class="font-bold text-yellow-500">【${pathName}征服者】</span> 征服了整个${pathName}！奖励: +${bonusPoints}分 (20×${suitSymbol}数量²，${suitCount}个${suitSymbol})`);
+                }
             }
             
             // 翻译函数
@@ -2421,4 +2648,5 @@
     </div>
 </body>
 </html>
+
 

@@ -1723,36 +1723,33 @@
                 }
             }
             
-            function resolveCombatSuccessfully(pathId, index, cards) { // 接受使用的卡牌数组作为参数
+                        // 找到 resolveCombatSuccessfully 函数的定义
+            // 确保它接受第三个参数，用于接收卡牌的索引数组
+            function resolveCombatSuccessfully(pathId, index, usedCardIndices) { // <-- 确保这里有 usedCardIndices 参数
                 const region = gameState.regions[pathId][index];
 
                 // 将战争区域转变为回声区域
                 region.type = 'echo';
                 region.combatData.blocking = false;  // 解除阻塞
+                region.combatData = null; // 解除后清除战争数据
+                region.wonderData = null; // 确保类型是回声，不是奇观
+                region.wonderEffect = null; // 清除可能残留的奇观效果
 
-                // 将用于解除的卡牌加入弃牌堆
-                const cardDescriptions = [];
-                // IMPORTANT: `cards` parameter here are Card objects, not indices.
-                // We need the indices to remove from gameState.hand.
-                // `attemptResolveCombatWithCards` passes the actual selected Card objects.
-                // So, we need to find the indices in the current gameState.hand corresponding to these cards.
-                // This is tricky if there are duplicate cards in hand.
-                // A better approach: `attemptResolveCombatWithCards` should pass the `gameState.selectedCards` (indices) directly.
+                // 将用于解除的卡牌加入弃牌堆并从手牌中移除
+                // 按照索引从大到小排序，以便 splice 操作不会影响后续索引
+                const indicesToRemove = [...usedCardIndices].sort((a, b) => b - a); // <-- 这里现在使用 usedCardIndices
 
-                // --- Let's modify attemptResolveCombatWithCards to pass indices ---
-                // Back in attemptResolveCombatWithCards:
-                // change `resolveCombatSuccessfully(pathId, index, selectedCards);`
-                // to     `resolveCombatSuccessfully(pathId, index, gameState.selectedCards);`
+                // 记录用于日志的卡牌描述 (可以在调用前在 attemptResolveCombatWithCards 中生成并传递进来，或者在这里获取)
+                // 如果在 attemptResolveCombatWithCards 中日志已经记录了卡牌，这里可以省略生成描述
+                // const cardDescriptions = indicesToRemove.map(idx => {
+                //     // 注意：这里需要从原始手牌（在splice前）获取卡牌信息，或者从传入的卡牌对象数组获取
+                //     // 由于我们现在传递索引，最好在调用前获取卡牌描述并传递进来，或者从 history state 获取？
+                //     // 简单起见，如果attemptResolveCombatWithCards已经记录了，这里可以跳过日志
+                // });
 
-                // --- Now back in resolveCombatSuccessfully ---
-                // Accept selectedIndices as parameter instead of cards
-                // function resolveCombatSuccessfully(pathId, index, selectedIndices) { ... }
-
-                const indicesToRemove = [...selectedIndices].sort((a, b) => b - a); // 从大到小排序
 
                 for (const cardIndex of indicesToRemove) {
-                    const card = gameState.hand[cardIndex];
-                    cardDescriptions.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                    const card = gameState.hand[cardIndex]; // 在 splice 移除之前获取卡牌
 
                     // 将卡牌加入弃牌堆
                     gameState.discardPile.push(card);
@@ -1764,26 +1761,29 @@
                 // 更新弃牌堆计数
                 updateDiscardCount();
 
-                // 更新区域显示
+                // 更新区域显示 (更新解除后的区域)
                 updateRegionDisplay(pathId, index);
 
-                // 记录到游戏日志
-                addLogEntry(`解除战争: ${PATH_NAMES[pathId]} ${region.rank}级「${region.combatData.name}」，使用 ${cardDescriptions.join(', ')}`);
+                // 记录操作 (如果日志没有在 attemptResolveCombatWithCards 中详细记录的话，可以在这里补充)
+                // addLogEntry(`解除战争成功: ${PATH_NAMES[pathId]} ${region.rank}级`); // 示例精简日志
 
-                // 显示成功消息 (可选，由 attemptResolveCombatWithCards 负责)
-                // showMessage(`成功解除战争区域！区域变为回声区域`);
+                // 显示成功消息
+                showMessage(`成功解除战争区域！区域变为回声区域`);
 
-                // *** 移除这行 ***
-                // resetSelectionState(); // <--- REMOVE THIS LINE
+                // 重置选择状态 (清除 gameState.selectedCards)
+                resetSelectionState();
 
-                // *** 移除这行 ***
-                // renderHand(); // <--- REMOVE THIS LINE
+                // 重新渲染手牌 (因为手牌数量变化了)
+                renderHand();
 
-                // *** 移除这行 ***
-                // addToHistory(saveGameState()); // <--- REMOVE THIS LINE (Handled by attemptResolveCombatWithCards)
+                // 更新右下角信息栏 (手牌/弃牌数量变化)
+                updateCornerInfo();
 
-                // 更新所有花色收获奇观的得分，因为弃牌可能会影响分数
+                // 更新所有花色收获奇观的得分 (因为弃牌可能影响花色数量)
                 updateAllSuitBonusWonders();
+
+                // 保存游戏状态到历史记录
+                addToHistory(saveGameState());
             }
             
             // 处理接受战争区域负面效果并解除战争区域

@@ -371,7 +371,7 @@
                                 <li>探索需要点数≥格子等级的卡牌</li>
                                 <li>黑桃探索时点数翻倍</li>
                                 <li>红桃占领时得分提高</li>
-                                <li>手牌上限：10张</li>
+                                <li>手牌上限：<span id="rules-hand-limit">10</span>张 (人口奇观可提高)</li>
                             </ul>
                         </div>
                     </div>
@@ -423,7 +423,7 @@
                         <!-- 手牌将在这里动态生成 -->
                     </div>
                     <div class="text-xs text-right mt-1 text-gray-500 dark:text-gray-400">
-                        手牌: <span id="hand-count">0</span>/10
+                        手牌: <span id="hand-count">0</span>/<span id="hand-limit">10</span>
                     </div>
                 </div>
             </div>
@@ -605,6 +605,7 @@
                 { type: 'draw', name: '抽卡', weight: 4, description: '每回合额外抽牌' },
                 { type: 'score', name: '得分', weight: 6, description: '每回合额外得分' },
                 { type: 'explore', name: '探索', weight: 2, description: '占领时额外探索该路径上的格子' },
+                { type: 'population', name: '人口', weight: 3, description: '增加手牌上限' },
                 { type: 'heart_bonus', name: '红桃收获', weight: 2, description: '该路径上每个红桃占领每回合+2分' },
                 { type: 'spade_bonus', name: '黑桃收获', weight: 2, description: '该路径上每个黑桃占领每回合+2分' },
                 { type: 'diamond_bonus', name: '方片收获', weight: 2, description: '该路径上每个方片占领每回合+2分' },
@@ -1198,6 +1199,16 @@
                         points = 0; // 这个效果不提供直接分数
                         break;
                         
+                    case 'population':
+                        // 人口效果：增加手牌上限
+                        region.wonderEffect = {
+                            type: 'population',
+                            value: multiplier // 橙色+3, 紫色+2, 蓝色+1
+                        };
+                        effectDescription = `手牌上限+${multiplier}`;
+                        points = 0; // 这个效果不提供直接分数
+                        break;
+                        
                     case 'score':
                         // 得分效果：每回合额外得分
                         points = 10 * multiplier; // 橙色+30/t, 紫色+20/t, 蓝色+10/t
@@ -1669,11 +1680,42 @@
                 document.body.appendChild(promptOverlay);
             }
             
+            // 获取当前手牌上限
+            function getCurrentHandLimit() {
+                // 基础手牌上限
+                let handLimit = 10;
+                
+                // 只有当游戏区域已经初始化时才计算奇观效果
+                if (!gameState.regions || Object.keys(gameState.regions).length === 0) {
+                    return handLimit;
+                }
+                
+                // 计算奇观带来的手牌上限提升
+                for (const pathId of PATHS) {
+                    // 确保该路径存在且可迭代
+                    if (gameState.regions[pathId] && Array.isArray(gameState.regions[pathId])) {
+                        for (const region of gameState.regions[pathId]) {
+                            if (region.status === 'occupied' && 
+                                region.type === 'wonder' && 
+                                region.wonderData && 
+                                region.wonderEffect &&
+                                region.wonderEffect.type === 'population') {
+                                handLimit += region.wonderEffect.value;
+                            }
+                        }
+                    }
+                }
+                
+                return handLimit;
+            }
+            
             // 结束回合
             function endTurn() {
+                // 获取当前手牌上限
+                const currentHandLimit = getCurrentHandLimit();
+                
                 // 如果手牌已满且牌库还有牌，提示玩家先弃牌
-                const MAX_HAND_SIZE = 10;
-                if (gameState.hand.length >= MAX_HAND_SIZE && gameState.deck.length > 0) {
+                if (gameState.hand.length >= currentHandLimit && gameState.deck.length > 0) {
                     showDiscardPrompt();
                     return;
                 }
@@ -1856,6 +1898,16 @@
             
             // 渲染手牌
             function renderHand() {
+                // 获取当前手牌上限
+                const currentHandLimit = getCurrentHandLimit();
+                
+                // 更新手牌上限显示
+                const handLimitEl = document.getElementById('hand-limit');
+                const rulesHandLimitEl = document.getElementById('rules-hand-limit');
+                
+                if (handLimitEl) handLimitEl.textContent = currentHandLimit;
+                if (rulesHandLimitEl) rulesHandLimitEl.textContent = currentHandLimit;
+                
                 handContainer.innerHTML = '';
                 
                 if (gameState.hand.length === 0) {
@@ -1895,9 +1947,11 @@
                     handCountEl.textContent = gameState.hand.length;
                     
                     // 如果手牌接近上限，高亮显示
-                    if (gameState.hand.length >= 8) {
+                    const warningThreshold = Math.max(8, currentHandLimit - 2); // 只有接近上限才显示警告
+                    
+                    if (gameState.hand.length >= warningThreshold) {
                         handCountEl.className = 'font-bold';
-                        if (gameState.hand.length >= 10) {
+                        if (gameState.hand.length >= currentHandLimit) {
                             handCountEl.className += ' text-red-500 dark:text-red-400';
                         } else {
                             handCountEl.className += ' text-yellow-500 dark:text-yellow-400';

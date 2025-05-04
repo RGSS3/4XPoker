@@ -665,43 +665,109 @@
             ];
             
             // 战争区域解除代价类型及其权重
-            const COMBAT_REQUIREMENTS = {
+             const COMBAT_REQUIREMENTS = {
                 'blue': [ // 蓝级战争区域代价
-                    {type: 'pair', name: '一对', display: '任意一对', weight: 2, 
-                        check: cards => hasPattern(cards, c => c.map(card => card.rank).filter((r, i, a) => a.indexOf(r) !== i).length >= 1)},
-                    {type: 'ace_any', name: 'A对', display: 'A+任意一张牌', weight: 1, 
-                        check: cards => hasPattern(cards, c => c.some(card => card.rank === 'A'))}
+                    {type: 'pair', name: '一对', display: '任意一对', weight: 2,
+                        // 检查是否至少有一对牌
+                        check: cards => {
+                            const counts = {};
+                            for (const card of cards) {
+                                counts[card.rank] = (counts[card.rank] || 0) + 1;
+                            }
+                            return Object.values(counts).some(count => count >= 2);
+                        }
+                    },
+                    {type: 'ace_any', name: 'A+任意一张牌', display: 'A+任意一张牌', weight: 1,
+                        // 检查手牌中是否包含 A
+                        check: cards => cards.some(card => card.rank === 'A')
+                    }
                 ],
                 'purple': [ // 紫级战争区域代价
                     {type: 'three_kind', name: '三条', display: '三张相同点数', weight: 2,
-                        check: cards => hasPattern(cards, c => findSameRankCards(c, 3))},
+                        // 检查是否至少有三张相同点数的牌 (使用 findSameRankCards 辅助函数)
+                        check: cards => findSameRankCards(cards, 3)
+                    },
                     {type: 'two_pair', name: '两对', display: '两对不同点数', weight: 2,
-                        check: cards => hasPattern(cards, c => {
-                            const ranks = c.map(card => card.rank);
-                            const uniqueRanks = [...new Set(ranks)];
-                            return uniqueRanks.length === 2 && ranks.length === 4;
-                        })}
+                        // 检查是否至少有两对不同点数的牌
+                        check: cards => {
+                            const counts = {};
+                            for (const card of cards) {
+                                counts[card.rank] = (counts[card.rank] || 0) + 1;
+                            }
+                            let pairCount = 0;
+                            for (const rank in counts) {
+                                if (counts[rank] >= 2) {
+                                    pairCount++;
+                                }
+                            }
+                            return pairCount >= 2;
+                        }
+                    }
                 ],
                 'orange': [ // 橙级战争区域代价
                     {type: 'flush', name: '同花', display: '五张同花色', weight: 2,
-                        check: cards => hasPattern(cards, c => {
-                            if (c.length < 5) return false;
-                            const suits = c.map(card => card.suit);
-                            return suits.every(s => s === suits[0]);
-                        })},
-                    {type: 'straight', name: '顺子', display: '五张连续点数', weight: 2,
-                        check: cards => hasPattern(cards, c => {
-                            if (c.length < 5) return false;
-                            const values = c.map(card => RANK_VALUES[card.rank]).sort((a, b) => a - b);
-                            for (let i = 0; i < values.length - 1; i++) {
-                                if (values[i+1] !== values[i] + 1) return false;
+                        // 检查是否至少有五张同花色的牌
+                        check: cards => {
+                            if (cards.length < 5) return false;
+                            const suits = cards.map(card => card.suit);
+                            // 检查是否存在某个花色的牌数 >= 5
+                            const suitCounts = {};
+                            for(const suit of suits) {
+                                suitCounts[suit] = (suitCounts[suit] || 0) + 1;
                             }
-                            return true;
-                        })},
+                            return Object.values(suitCounts).some(count => count >= 5);
+                        }
+                    },
+                    {type: 'straight', name: '顺子', display: '五张连续点数', weight: 2,
+                        // 检查是否至少有五张连续点数的牌 (包含 A-5 和 10-A)
+                        check: cards => {
+                            if (cards.length < 5) return false;
+                            const values = cards.map(card => RANK_VALUES[card.rank]);
+                            // 获取唯一的点数值并排序
+                            const uniqueValues = [...new Set(values)].sort((a, b) => a - b);
+
+                            // 检查标准顺子 (是否有连续的5个点数)
+                            for (let i = 0; i <= uniqueValues.length - 5; i++) {
+                                let isStraight = true;
+                                for (let j = 0; j < 4; j++) {
+                                    if (uniqueValues[i + j + 1] !== uniqueValues[i + j] + 1) {
+                                        isStraight = false;
+                                        break;
+                                    }
+                                }
+                                if (isStraight) return true;
+                            }
+
+                            // 检查 A-5 顺子 (A, 2, 3, 4, 5)
+                            // 需要包含 A(14), 2, 3, 4, 5 的点数
+                            const hasAce = values.includes(14);
+                            const has2 = values.includes(2);
+                            const has3 = values.includes(3);
+                            const has4 = values.includes(4);
+                            const has5 = values.includes(5);
+
+                            if (hasAce && has2 && has3 && has4 && has5) {
+                                return true; // A-2-3-4-5 顺子存在
+                            }
+
+                            return false; // 没有找到顺子
+                        }
+                    },
                     {type: 'four_kind', name: '四条', display: '四张相同点数', weight: 1,
-                        check: cards => hasPattern(cards, c => findSameRankCards(c, 4))}
+                        // 检查是否至少有四张相同点数的牌 (使用 findSameRankCards 辅助函数)
+                        check: cards => findSameRankCards(cards, 4)
+                    }
                 ]
             };
+
+            // 辅助函数：检查牌组中是否有指定数量的同点数牌 (这个函数本身是正确的)
+            function findSameRankCards(cards, count) {
+                const rankCounts = {};
+                for (const card of cards) {
+                    rankCounts[card.rank] = (rankCounts[card.rank] || 0) + 1;
+                }
+                return Object.values(rankCounts).some(c => c >= count);
+            }
             
             // 战争区域不解除的负面效果类型及其权重
            const COMBAT_EFFECTS = [

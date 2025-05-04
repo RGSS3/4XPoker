@@ -385,32 +385,49 @@
             </div>
         </div>
         
-        <!-- 手牌区域 -->
-        <div class="mt-4">
-            <div class="flex justify-between items-center mb-2">
-                <h3 class="text-lg font-bold" data-i18n="yourHand">您的手牌</h3>
-                <div class="flex space-x-2">
-                    <button id="discard-btn" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg text-sm flex items-center">
-                        <span>弃牌</span>
-                        <span class="ml-1 text-xs opacity-75">(选中牌)</span>
-                    </button>
-                    <button id="end-turn-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white py-1 px-3 rounded-lg text-sm">
-                        <span data-i18n="endTurn">结束回合</span>
-                    </button>
+        <!-- 当前选择的行动提示 -->
+        <div id="action-info" class="text-center text-sm text-gray-600 dark:text-gray-400 h-6 mt-2 mb-20"></div>
+        
+        <!-- 浮动手牌区域 -->
+        <div class="fixed bottom-0 left-0 right-0 z-40 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 shadow-lg">
+            <div class="container mx-auto px-4 py-2 max-w-6xl">
+                <!-- 状态信息行 -->
+                <div class="flex justify-between items-center mb-1">
+                    <div class="flex items-center space-x-2">
+                        <div class="text-sm"><span>得分</span>: <span id="float-score" class="text-primary font-bold">0</span></div>
+                        <div class="text-sm border-l border-gray-300 dark:border-gray-700 pl-2"><span>回合</span>: <span id="float-turn">1</span></div>
+                        <div class="text-sm border-l border-gray-300 dark:border-gray-700 pl-2"><span>牌堆</span>: <span id="float-deck">47</span></div>
+                        <div class="text-sm border-l border-gray-300 dark:border-gray-700 pl-2"><span>弃牌</span>: <span id="float-discard">0</span></div>
+                        <div class="text-sm border-l border-gray-300 dark:border-gray-700 pl-2 text-green-600 dark:text-green-400">
+                            <span>每回合</span>: <span id="float-points-per-turn">+0</span>
+                        </div>
+                        <div class="text-sm border-l border-gray-300 dark:border-gray-700 pl-2 text-yellow-600 dark:text-yellow-400">
+                            <span>预计</span>: ≈<span id="estimated-score">0</span>
+                        </div>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="discard-btn" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg text-sm flex items-center">
+                            <span>弃牌</span>
+                            <span class="ml-1 text-xs opacity-75">(<span id="selected-count">0</span>张)</span>
+                        </button>
+                        <button id="end-turn-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white py-1 px-3 rounded-lg text-sm">
+                            <span data-i18n="endTurn">结束回合</span>
+                        </button>
+                    </div>
                 </div>
-            </div>
-            <div class="flex flex-col">
-                <div id="hand-container" class="flex justify-center gap-2 flex-wrap p-4 bg-gray-100 dark:bg-gray-800 rounded-lg min-h-[150px] relative">
-                    <!-- 手牌将在这里动态生成 -->
-                </div>
-                <div class="text-xs text-right mt-1 text-gray-500 dark:text-gray-400">
-                    手牌: <span id="hand-count">0</span>/10
+                
+                <!-- 手牌区域 -->
+                <div class="flex flex-col">
+                    <h3 class="text-lg font-bold mb-1" data-i18n="yourHand">您的手牌</h3>
+                    <div id="hand-container" class="flex justify-center gap-2 flex-wrap p-2 bg-gray-100 dark:bg-gray-800 rounded-lg min-h-[120px] relative">
+                        <!-- 手牌将在这里动态生成 -->
+                    </div>
+                    <div class="text-xs text-right mt-1 text-gray-500 dark:text-gray-400">
+                        手牌: <span id="hand-count">0</span>/10
+                    </div>
                 </div>
             </div>
         </div>
-        
-        <!-- 当前选择的行动提示 -->
-        <div id="action-info" class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400 h-6"></div>
         
         <!-- 右下角信息栏 -->
         <div class="fixed bottom-4 right-4 z-30">
@@ -730,7 +747,7 @@
                 score: 0,            // 总分数
                 turn: 1,             // 当前回合
                 currentSeed: '',     // 当前种子
-                selectedCard: null,  // 当前选择的手牌索引
+                selectedCards: [],   // 当前选择的手牌索引数组（支持多选）
                 selectedAction: '',  // 当前选择的行动
                 regions: {},         // 游戏区域状态
                 gameOver: false      // 游戏是否结束
@@ -1037,14 +1054,23 @@
                 const regionElement = regionContainer.children[displayIndex];
                 
                 // 检查是否选择了手牌
-                if (gameState.selectedCard === null) {
+                if (gameState.selectedCards.length === 0) {
                     showErrorOnRegion(regionElement, t('selectCard'));
                     showMessage(t('selectCard'));
                     return;
                 }
                 
+                // 检查是否选择了多张手牌（探索和占领只能用一张牌）
+                if (gameState.selectedCards.length > 1) {
+                    showErrorOnRegion(regionElement, "探索和占领只能使用一张牌");
+                    showMessage("探索和占领只能使用一张牌，请只选择一张");
+                    return;
+                }
+                
+                // 获取选中的牌
+                const cardIndex = gameState.selectedCards[0];
                 const region = gameState.regions[pathId][index];
-                const card = gameState.hand[gameState.selectedCard];
+                const card = gameState.hand[cardIndex];
                 const cardRank = RANK_VALUES[card.rank];
                 
                 // 自动判断操作类型
@@ -1087,8 +1113,10 @@
             
             // 探索区域
             function exploreRegion(pathId, index, cardIndex) {
+                // 获取选择的卡牌索引（使用selectedCards数组第一个元素）
+                const selectedCardIndex = gameState.selectedCards[0];
                 // 获取选择的卡牌和区域
-                const card = gameState.hand[cardIndex];
+                const card = gameState.hand[selectedCardIndex];
                 const region = gameState.regions[pathId][index];
                 const cardRank = RANK_VALUES[card.rank];
                 
@@ -1254,8 +1282,10 @@
             
             // 占领区域
             function occupyRegion(pathId, index, cardIndex) {
+                // 获取选择的卡牌索引（使用selectedCards数组第一个元素）
+                const selectedCardIndex = gameState.selectedCards[0]; 
                 // 获取选择的卡牌和区域
-                const card = gameState.hand[cardIndex];
+                const card = gameState.hand[selectedCardIndex];
                 const region = gameState.regions[pathId][index];
                 const cardRank = RANK_VALUES[card.rank];
                 
@@ -1554,27 +1584,41 @@
                 }
             }
             
-            // 弃牌
+            // 弃牌（支持多选）
             function discardCard() {
-                if (gameState.selectedCard === null) {
+                if (gameState.selectedCards.length === 0) {
                     showMessage('请先选择要弃掉的手牌');
                     return;
                 }
                 
-                // 获取选中的卡牌
-                const card = gameState.hand[gameState.selectedCard];
+                // 按照索引从大到小排序（先处理后面的索引避免删除影响前面的索引）
+                const sortedIndices = [...gameState.selectedCards].sort((a, b) => b - a);
                 
-                // 加入弃牌堆
-                gameState.discardPile.push(card);
+                // 记录弃掉的牌
+                const discardedCards = [];
                 
-                // 从手牌中移除
-                gameState.hand.splice(gameState.selectedCard, 1);
+                // 处理每张选中的牌
+                for (const index of sortedIndices) {
+                    // 获取选中的卡牌
+                    const card = gameState.hand[index];
+                    discardedCards.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                    
+                    // 加入弃牌堆
+                    gameState.discardPile.push(card);
+                    
+                    // 从手牌中移除
+                    gameState.hand.splice(index, 1);
+                }
                 
                 // 更新弃牌堆计数
                 updateDiscardCount();
                 
                 // 记录操作
-                addLogEntry(`弃牌: ${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                if (discardedCards.length === 1) {
+                    addLogEntry(`弃牌: ${discardedCards[0]}`);
+                } else {
+                    addLogEntry(`弃牌: ${discardedCards.join(', ')}`);
+                }
                 
                 // 重置选择状态
                 resetSelectionState();
@@ -1583,7 +1627,11 @@
                 renderHand();
                 
                 // 显示消息
-                showMessage(`已弃掉 ${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                if (discardedCards.length === 1) {
+                    showMessage(`已弃掉 ${discardedCards[0]}`);
+                } else {
+                    showMessage(`已弃掉 ${discardedCards.length} 张牌`);
+                }
                 
                 // 保存游戏状态到历史记录
                 addToHistory(saveGameState());
@@ -1818,7 +1866,8 @@
                 } else {
                     gameState.hand.forEach((card, index) => {
                         const cardElement = document.createElement('div');
-                        cardElement.className = `card hand-card transition-transform duration-200 w-16 h-24 md:w-20 md:h-30 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md flex flex-col items-center justify-center ${gameState.selectedCard === index ? 'border-primary border-2 -translate-y-4' : ''}`;
+                        const isSelected = gameState.selectedCards.includes(index);
+                        cardElement.className = `card hand-card transition-transform duration-200 w-16 h-24 md:w-20 md:h-30 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md flex flex-col items-center justify-center ${isSelected ? 'border-primary border-2 -translate-y-4' : ''}`;
                         cardElement.dataset.index = index;
                         
                         // 卡牌内容
@@ -1861,21 +1910,45 @@
                 // 更新弃牌按钮状态
                 const discardBtn = document.getElementById('discard-btn');
                 if (discardBtn) {
-                    discardBtn.disabled = gameState.selectedCard === null;
-                    discardBtn.classList.toggle('opacity-50', gameState.selectedCard === null);
+                    discardBtn.disabled = gameState.selectedCards.length === 0;
+                    discardBtn.classList.toggle('opacity-50', gameState.selectedCards.length === 0);
                 }
             }
             
-            // 选择手牌
+            // 选择手牌（支持多选）
             function selectCard(index) {
-                // 如果已经选择了这张牌，取消选择
-                if (gameState.selectedCard === index) {
-                    gameState.selectedCard = null;
-                    actionInfoElement.textContent = '';
+                // 检查该牌是否已经被选中
+                const cardIndex = gameState.selectedCards.indexOf(index);
+                
+                if (cardIndex !== -1) {
+                    // 如果已经选中，取消选择
+                    gameState.selectedCards.splice(cardIndex, 1);
                 } else {
-                    gameState.selectedCard = index;
-                    const card = gameState.hand[index];
+                    // 否则添加到选中列表
+                    gameState.selectedCards.push(index);
+                }
+                
+                // 更新选中卡牌数量显示
+                const selectedCountEl = document.getElementById('selected-count');
+                if (selectedCountEl) {
+                    selectedCountEl.textContent = gameState.selectedCards.length;
+                }
+                
+                // 更新操作信息提示
+                if (gameState.selectedCards.length === 0) {
+                    actionInfoElement.textContent = '';
+                } else if (gameState.selectedCards.length === 1) {
+                    const card = gameState.hand[gameState.selectedCards[0]];
                     actionInfoElement.textContent = `已选择: ${card.rank}${SUIT_SYMBOLS[card.suit]} - 点击区域执行操作`;
+                } else {
+                    actionInfoElement.textContent = `已选择 ${gameState.selectedCards.length} 张牌`;
+                }
+                
+                // 更新弃牌按钮状态
+                const discardBtn = document.getElementById('discard-btn');
+                if (discardBtn) {
+                    discardBtn.disabled = gameState.selectedCards.length === 0;
+                    discardBtn.classList.toggle('opacity-50', gameState.selectedCards.length === 0);
                 }
                 
                 // 重新渲染手牌，显示选中状态
@@ -1910,7 +1983,13 @@
             // 重置选择状态
             function resetSelectionState() {
                 gameState.selectedAction = '';
-                gameState.selectedCard = null;
+                gameState.selectedCards = [];
+                
+                // 更新选中卡牌数量显示
+                const selectedCountEl = document.getElementById('selected-count');
+                if (selectedCountEl) {
+                    selectedCountEl.textContent = 0;
+                }
                 
                 // 重新渲染手牌
                 renderHand();
@@ -2208,14 +2287,27 @@
                 return totalPoints;
             }
             
-            // 更新右下角信息栏
+            // 更新右下角和浮动信息栏
             function updateCornerInfo() {
+                // 右下角信息栏
                 const scoreCorner = document.getElementById('score-corner');
                 const turnCorner = document.getElementById('turn-corner');
                 const remainingCorner = document.getElementById('remaining-corner');
                 const discardCorner = document.getElementById('discard-corner');
                 const pointsPerTurn = document.getElementById('points-per-turn');
                 
+                // 浮动信息栏
+                const floatScore = document.getElementById('float-score');
+                const floatTurn = document.getElementById('float-turn');
+                const floatDeck = document.getElementById('float-deck');
+                const floatDiscard = document.getElementById('float-discard');
+                const floatPointsPerTurn = document.getElementById('float-points-per-turn');
+                const estimatedScore = document.getElementById('estimated-score');
+                
+                // 计算每回合得分
+                const points = calculatePointsPerTurn();
+                
+                // 更新右下角信息
                 if (scoreCorner) scoreCorner.textContent = gameState.score;
                 if (turnCorner) turnCorner.textContent = gameState.turn;
                 if (remainingCorner) remainingCorner.textContent = gameState.deck.length;
@@ -2223,7 +2315,6 @@
                 
                 // 更新每回合得分
                 if (pointsPerTurn) {
-                    const points = calculatePointsPerTurn();
                     pointsPerTurn.textContent = '+' + points;
                     
                     // 根据得分调整显示样式
@@ -2235,6 +2326,73 @@
                         pointsPerTurn.className = 'text-green-600 dark:text-green-400 font-bold';
                     } else {
                         pointsPerTurn.className = 'text-gray-600 dark:text-gray-400';
+                    }
+                }
+                
+                // 更新浮动区域信息
+                if (floatScore) floatScore.textContent = gameState.score;
+                if (floatTurn) floatTurn.textContent = gameState.turn;
+                if (floatDeck) floatDeck.textContent = gameState.deck.length;
+                if (floatDiscard) floatDiscard.textContent = gameState.discardPile.length;
+                
+                // 更新浮动区域每回合得分
+                if (floatPointsPerTurn) {
+                    floatPointsPerTurn.textContent = '+' + points;
+                    
+                    // 根据得分调整显示样式
+                    if (points >= 30) {
+                        floatPointsPerTurn.className = 'text-red-500 dark:text-red-400 font-bold';
+                    } else if (points >= 20) {
+                        floatPointsPerTurn.className = 'text-yellow-500 dark:text-yellow-400 font-bold';
+                    } else if (points > 0) {
+                        floatPointsPerTurn.className = 'text-green-600 dark:text-green-400 font-bold';
+                    } else {
+                        floatPointsPerTurn.className = 'text-gray-600 dark:text-gray-400';
+                    }
+                }
+                
+                // 计算并更新预计得分
+                if (estimatedScore) {
+                    // 计算预计剩余回合数
+                    // 回合数 = 剩余牌数 / 每回合起牌数
+                    // 默认每回合起1张牌
+                    let cardsPerTurn = 1;
+                    
+                    // 计算每回合额外抽牌数
+                    let extraDraws = 0;
+                    for (const pathId of PATHS) {
+                        for (const region of gameState.regions[pathId]) {
+                            if (region.status === 'occupied' && 
+                                region.type === 'wonder' && 
+                                region.wonderData && 
+                                region.wonderEffect &&
+                                region.wonderEffect.type === 'draw') {
+                                extraDraws += region.wonderEffect.value;
+                            }
+                        }
+                    }
+                    
+                    // 调整每回合起牌数
+                    cardsPerTurn += extraDraws;
+                    
+                    // 计算预计剩余回合数（最少1回合）
+                    const estimatedRemainingTurns = Math.max(1, Math.ceil(gameState.deck.length / cardsPerTurn));
+                    
+                    // 计算最终预计得分
+                    const finalEstimatedScore = gameState.score + (points * estimatedRemainingTurns);
+                    
+                    // 更新预计得分显示
+                    estimatedScore.textContent = finalEstimatedScore;
+                    
+                    // 根据预计得分调整显示样式
+                    if (finalEstimatedScore >= 300) {
+                        estimatedScore.className = 'text-red-500 dark:text-red-400 font-bold';
+                    } else if (finalEstimatedScore >= 200) {
+                        estimatedScore.className = 'text-yellow-500 dark:text-yellow-400 font-bold';
+                    } else if (finalEstimatedScore >= 100) {
+                        estimatedScore.className = 'text-green-500 dark:text-green-400 font-bold';
+                    } else {
+                        estimatedScore.className = 'text-yellow-600 dark:text-yellow-400';
                     }
                 }
             }

@@ -1,0 +1,2424 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文明4X扑克</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#5D5CDE',
+                        land: '#8BC34A',    // 陆地绿色
+                        ocean: '#03A9F4',   // 海洋蓝色
+                        desert: '#FFC107',  // 沙漠黄色
+                        sky: '#9C27B0',     // 天空紫色
+                        unexplored: '#9E9E9E', // 未探索灰色
+                        explored: '#E0E0E0',   // 已探索白色
+                        occupied: '#2196F3',   // 已占领蓝色
+                        echo: '#4CAF50',     // 回声区域绿色
+                        wonder: '#8BC34A',   // 奇观区域浅绿色
+                        combat: '#F44336',   // 战斗区域红色
+                        disaster: '#FF5722'  // 灾难区域橙色
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+        
+        .card-fade-in {
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .card-fade-out {
+            animation: fadeOut 0.3s ease-in-out;
+        }
+        
+        .card {
+            aspect-ratio: 2/3;
+            perspective: 1000px;
+        }
+        
+        .card-inner {
+            transform-style: preserve-3d;
+            transition: transform 0.6s;
+        }
+        
+        .card-front, .card-back {
+            backface-visibility: hidden;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 0.5rem;
+        }
+        
+        .card-back {
+            transform: rotateY(180deg);
+            background-image: repeating-linear-gradient(45deg, rgba(93, 92, 222, 0.1) 0, rgba(93, 92, 222, 0.1) 10px, transparent 10px, transparent 20px);
+        }
+        
+        .dark .card-back {
+            background-image: repeating-linear-gradient(45deg, rgba(93, 92, 222, 0.2) 0, rgba(93, 92, 222, 0.2) 10px, transparent 10px, transparent 20px);
+        }
+        
+        /* 花色颜色定义 */
+        .heart {
+            color: #E53E3E; /* 红色 */
+        }
+        
+        .dark .heart {
+            color: #FC8181; /* 深色模式下的红色 */
+        }
+        
+        .diamond {
+            color: #ED8936; /* 橙色 */
+        }
+        
+        .dark .diamond {
+            color: #F6AD55; /* 深色模式下的橙色 */
+        }
+        
+        .spade {
+            color: #805AD5; /* 紫色 */
+        }
+        
+        .dark .spade {
+            color: #9F7AEA; /* 深色模式下的紫色 */
+        }
+        
+        .club {
+            color: #2D3748; /* 深灰色/黑色 */
+        }
+        
+        .dark .club {
+            color: #E2E8F0; /* 深色模式下的灰白色 */
+        }
+
+        /* 游戏板区域类型样式 */
+        .region-unexplored {
+            background-color: theme('colors.unexplored');
+        }
+        
+        .region-explored {
+            background-color: theme('colors.explored');
+        }
+        
+        .region-occupied {
+            background-color: theme('colors.occupied');
+        }
+        
+        .region-echo {
+            background-color: theme('colors.echo');
+        }
+        
+        /* 奇观样式 */
+        .wonder-orange {
+            background-color: #FF9800;
+            color: #fff;
+        }
+        
+        .wonder-purple {
+            background-color: #9C27B0;
+            color: #fff;
+        }
+        
+        .wonder-blue {
+            background-color: #2196F3;
+            color: #fff;
+        }
+        
+        .dark .wonder-orange {
+            background-color: #E65100;
+        }
+        
+        .dark .wonder-purple {
+            background-color: #6A1B9A;
+        }
+        
+        .dark .wonder-blue {
+            background-color: #0D47A1;
+        }
+        
+        /* 探索线路样式 */
+        .path-land {
+            border-left: 4px solid theme('colors.land');
+        }
+        
+        .path-ocean {
+            border-left: 4px solid theme('colors.ocean');
+        }
+        
+        .path-desert {
+            border-left: 4px solid theme('colors.desert');
+        }
+        
+        .path-sky {
+            border-left: 4px solid theme('colors.sky');
+        }
+        
+        /* 手牌悬停效果 */
+        .hand-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        /* Ensure all inputs have at least 16px font size on mobile */
+        @media (max-width: 768px) {
+            input, button, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+        
+        /* Disable text selection for the game interface */
+        body {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+        
+        /* Re-enable text selection for input elements */
+        input, textarea {
+            user-select: text;
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+        }
+    </style>
+</head>
+<body class="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <!-- 游戏标题和信息 -->
+        <div class="text-center mb-4">
+            <h1 class="text-3xl font-bold mb-2" data-i18n="gameTitle">文明4X扑克</h1>
+            <p class="text-sm md:text-base text-gray-600 dark:text-gray-400 mb-2" data-i18n="gameDescription">探索、扩张、开发、征服！使用扑克牌建立您的文明</p>
+        </div>
+        
+        <!-- 种子输入区域 -->
+        <div class="flex flex-col md:flex-row justify-center items-center mb-4 gap-2">
+            <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 shadow-md flex-grow max-w-xl w-full">
+                <div class="flex flex-wrap gap-2 items-center">
+                    <label for="seed-input" class="font-bold text-sm whitespace-nowrap">游戏种子:</label>
+                    <div class="flex flex-1 min-w-0">
+                        <input 
+                            id="seed-input" 
+                            type="text" 
+                            class="flex-1 min-w-0 text-base p-2 border border-gray-300 dark:border-gray-600 rounded-l-md bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200"
+                            placeholder="输入种子值或使用随机种子" 
+                            value="" 
+                            spellcheck="false"
+                        />
+                        <button id="random-seed-btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 px-3 py-2 rounded-r-md text-gray-700 dark:text-gray-300 flex items-center">
+                            🎲
+                        </button>
+                    </div>
+                    <button id="start-seed-game" class="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg whitespace-nowrap">
+                        开始游戏
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 游戏控制和信息 -->
+        <div class="flex flex-wrap justify-between items-center mb-4 gap-2">
+            <!-- 得分和回合信息 -->
+            <div class="flex flex-col bg-gray-100 dark:bg-gray-800 rounded-lg p-2 shadow-md">
+                <div class="flex items-center space-x-4">
+                    <div class="text-xl font-bold"><span data-i18n="score">得分</span>: <span id="score" class="text-primary">0</span></div>
+                    <div class="text-lg"><span data-i18n="turn">回合</span>: <span id="turn-counter">1</span></div>
+                </div>
+                <div class="text-sm text-gray-600 dark:text-gray-400 flex space-x-3">
+                    <div><span data-i18n="remainingCards">牌堆</span>: <span id="remaining-cards">47</span></div>
+                    <div><span>弃牌堆</span>: <span id="discard-count">0</span></div>
+                </div>
+            </div>
+            
+            <!-- 种子信息和分享 -->
+            <div class="flex items-center bg-gray-100 dark:bg-gray-800 rounded-lg p-2 shadow-md">
+                <span class="mr-2 text-sm" data-i18n="randomSeed">随机种子</span>
+                <code id="seed-display" class="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded text-xs break-all mr-2"></code>
+                <div class="flex space-x-1">
+                    <button id="random-seed" class="text-primary hover:text-primary-dark p-1 rounded text-xs" title="生成随机种子">🎲</button>
+                    <button id="input-seed" class="text-primary hover:text-primary-dark p-1 rounded text-xs" title="输入种子">⌨️</button>
+                    <button id="copy-seed" class="text-primary hover:text-primary-dark p-1 rounded text-xs" title="复制种子">📋</button>
+                    <button id="share-game" class="text-primary hover:text-primary-dark p-1 rounded text-xs" title="分享游戏">↗️</button>
+                </div>
+            </div>
+            
+            <!-- 游戏控制按钮 -->
+            <div class="flex space-x-2">
+                <button id="new-game-btn" class="bg-primary hover:bg-indigo-700 text-white px-3 py-1 rounded-lg text-sm">
+                    <span data-i18n="newGame">新游戏</span>
+                </button>
+                <button id="undo-btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1 rounded-lg text-sm opacity-50" disabled>
+                    <span data-i18n="undo">撤销</span>
+                </button>
+                <button id="history-btn" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-3 py-1 rounded-lg text-sm">
+                    <span data-i18n="history">历史</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- 游戏区域 -->
+        <div class="flex flex-col md:flex-row gap-4">
+            <!-- 主游戏区域 -->
+            <div class="w-full md:w-3/4 bg-gray-100 dark:bg-gray-800 rounded-lg p-4 shadow-md overflow-x-auto">
+                <div class="min-w-[800px]">
+                    <!-- 游戏区域：4列13行布局 -->
+                    <div class="flex justify-center">
+                        <div class="grid grid-cols-4 gap-2 w-full max-w-2xl">
+                            <!-- 路径标题 -->
+                            <div class="bg-land text-white rounded px-2 py-1 text-center font-bold">陆地</div>
+                            <div class="bg-ocean text-white rounded px-2 py-1 text-center font-bold">海洋</div>
+                            <div class="bg-desert text-white rounded px-2 py-1 text-center font-bold">沙漠</div>
+                            <div class="bg-sky text-white rounded px-2 py-1 text-center font-bold">天空</div>
+                            
+                            <!-- 游戏区域格子 -->
+                            <div id="land-regions" class="flex flex-col gap-1">
+                                <!-- 陆地区域将通过JS动态生成 -->
+                            </div>
+                            <div id="ocean-regions" class="flex flex-col gap-1">
+                                <!-- 海洋区域将通过JS动态生成 -->
+                            </div>
+                            <div id="desert-regions" class="flex flex-col gap-1">
+                                <!-- 沙漠区域将通过JS动态生成 -->
+                            </div>
+                            <div id="sky-regions" class="flex flex-col gap-1">
+                                <!-- 天空区域将通过JS动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 右侧信息和操作区 -->
+            <div class="w-full md:w-1/4 flex flex-col gap-4">
+                <!-- 游戏消息区 -->
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 shadow-md h-24 overflow-y-auto">
+                    <h3 class="text-sm font-bold mb-1 text-gray-700 dark:text-gray-300" data-i18n="gameMessages">游戏消息</h3>
+                    <div id="game-message" class="text-sm"></div>
+                </div>
+                
+                <!-- 行动区 -->
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 shadow-md">
+                    <h3 class="text-sm font-bold mb-2 text-gray-700 dark:text-gray-300" data-i18n="actions">行动</h3>
+                    <div class="space-y-2">
+                        <div class="text-sm mb-2 text-gray-600 dark:text-gray-400 text-center">
+                            <p data-i18n="selectCardFirst">先选择手牌，再点击区域</p>
+                        </div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                            <ul class="list-disc list-inside">
+                                <li>探索需要点数≥格子等级的卡牌</li>
+                                <li>黑桃探索时点数翻倍</li>
+                                <li>红桃占领时得分提高</li>
+                                <li>手牌上限：10张</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 游戏日志 -->
+                <div class="bg-gray-100 dark:bg-gray-800 rounded-lg p-3 shadow-md flex-grow overflow-y-auto">
+                    <h3 class="text-sm font-bold mb-1 text-gray-700 dark:text-gray-300" data-i18n="gameLog">游戏日志</h3>
+                    <div id="game-log" class="text-xs space-y-1 h-40 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 手牌区域 -->
+        <div class="mt-4">
+            <div class="flex justify-between items-center mb-2">
+                <h3 class="text-lg font-bold" data-i18n="yourHand">您的手牌</h3>
+                <div class="flex space-x-2">
+                    <button id="discard-btn" class="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-lg text-sm flex items-center">
+                        <span>弃牌</span>
+                        <span class="ml-1 text-xs opacity-75">(选中牌)</span>
+                    </button>
+                    <button id="end-turn-btn" class="bg-yellow-600 hover:bg-yellow-700 text-white py-1 px-3 rounded-lg text-sm">
+                        <span data-i18n="endTurn">结束回合</span>
+                    </button>
+                </div>
+            </div>
+            <div class="flex flex-col">
+                <div id="hand-container" class="flex justify-center gap-2 flex-wrap p-4 bg-gray-100 dark:bg-gray-800 rounded-lg min-h-[150px] relative">
+                    <!-- 手牌将在这里动态生成 -->
+                </div>
+                <div class="text-xs text-right mt-1 text-gray-500 dark:text-gray-400">
+                    手牌: <span id="hand-count">0</span>/10
+                </div>
+            </div>
+        </div>
+        
+        <!-- 当前选择的行动提示 -->
+        <div id="action-info" class="mt-2 text-center text-sm text-gray-600 dark:text-gray-400 h-6"></div>
+        
+        <!-- 游戏结果弹窗 -->
+        <div id="result-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+                <h2 class="text-2xl font-bold mb-4 text-center" data-i18n="gameOver">游戏结束</h2>
+                <p class="text-lg mb-2"><span data-i18n="finalScore">最终得分</span>: <span id="final-score" class="font-bold"></span></p>
+                <p class="mb-4 text-sm text-gray-600 dark:text-gray-400" data-i18n="playAgainPrompt">再来一次，创建更强大的文明！</p>
+                <div class="flex flex-wrap justify-center gap-2">
+                    <button id="play-again" class="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg" data-i18n="newGame">新游戏</button>
+                    <button id="replay-same-seed" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg" data-i18n="replaySameSeed">重玩本局</button>
+                    <button id="share-result" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg" data-i18n="shareResult">分享成绩</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 历史浏览器弹窗 -->
+        <div id="history-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+                <h2 class="text-xl font-bold mb-4 text-center" data-i18n="historyBrowser">历史浏览器</h2>
+                <div class="flex justify-between items-center mb-2">
+                    <div class="text-sm">
+                        <span data-i18n="turn">回合</span>: <span id="history-turn" class="font-bold">1</span> / 
+                        <span data-i18n="move">操作</span>: <span id="history-index" class="font-bold">0</span> / <span id="history-total" class="font-bold">0</span>
+                    </div>
+                    <div class="text-sm">
+                        <span data-i18n="score">得分</span>: <span id="history-score" class="font-bold">0</span>
+                    </div>
+                </div>
+                
+                <!-- 浏览控制 -->
+                <div class="flex justify-between items-center mb-3">
+                    <button id="history-prev" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 px-4 rounded-lg text-sm flex items-center">
+                        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <div class="text-center">
+                        <span id="history-action-desc" class="text-sm"></span>
+                    </div>
+                    <button id="history-next" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 px-4 rounded-lg text-sm flex items-center">
+                        <svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                        </svg>
+                    </button>
+                </div>
+                
+                <!-- 历史状态显示 -->
+                <div id="history-board" class="bg-white dark:bg-gray-900 rounded-lg p-2 mb-4">
+                    <!-- 历史状态将在这里动态显示 -->
+                </div>
+                
+                <!-- 导出按钮 -->
+                <div class="flex justify-center gap-2 mb-4">
+                    <button id="export-html" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-lg text-sm flex items-center">
+                        <svg class="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span>HTML</span>
+                    </button>
+                    <button id="export-txt" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm flex items-center">
+                        <svg class="w-4 h-4 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        <span>TXT</span>
+                    </button>
+                </div>
+                
+                <!-- 控制按钮 -->
+                <div class="flex justify-center gap-3">
+                    <button id="history-select" class="bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg" data-i18n="selectThis">选择此状态</button>
+                    <button id="history-cancel" class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg" data-i18n="cancel">取消</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 提示弹窗 -->
+        <div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-4 py-2 rounded-lg opacity-0 transition-opacity duration-300 z-50">
+            <!-- 提示内容 -->
+        </div>
+
+        <script>
+            // 游戏常量
+            const SUITS = ['heart', 'diamond', 'spade', 'club'];
+            const SUIT_SYMBOLS = {
+                'heart': '♥',
+                'diamond': '♦',
+                'spade': '♠',
+                'club': '♣'
+            };
+            const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+            const RANK_VALUES = {
+                'A': 14, '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7,
+                '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13
+            };
+            
+            // 路径定义
+            const PATHS = ['land', 'ocean', 'desert', 'sky'];
+            const PATH_NAMES = {
+                'land': '陆地',
+                'ocean': '海洋',
+                'desert': '沙漠',
+                'sky': '天空'
+            };
+            
+            // 区域类型
+            const REGION_TYPES = {
+                'standard': {
+                    name: '普通区域',
+                    color: 'explored',
+                    explorePoints: 1,
+                    occupyPoints: 1
+                },
+                'echo': {
+                    name: '回声区域',
+                    color: 'echo',
+                    explorePoints: 1,
+                    // occupyPoints在占领时计算（= 牌值 x 2）
+                },
+                'wonder': {
+                    name: '奇观区域',
+                    color: 'wonder',
+                    explorePoints: 2,
+                    // 奇观有特殊占领逻辑和效果
+                }
+            };
+            
+            // 奇观强度级别
+            const WONDER_TIERS = {
+                'orange': { color: 'orange', name: '橙级奇观', baseScore: 7, effectMultiplier: 3 },
+                'purple': { color: 'purple', name: '紫级奇观', baseScore: 5, effectMultiplier: 2 },
+                'blue': { color: 'blue', name: '蓝级奇观', baseScore: 3, effectMultiplier: 1 }
+            };
+            
+            // 奇观名称列表（七大奇迹和SCP七大地点）
+            const WONDER_NAMES = [
+                '亚历山大港灯塔', '巴比伦空中花园', '奥林匹亚宙斯像', 
+                '阿尔忒弥斯神庙', '摩索拉斯陵墓', '罗德岛太阳神巨像', 
+                '亚历山大图书馆', '金字塔', '万里长城', '埃菲尔铁塔',
+                'SCP-2000 复兴', 'SCP-3000 深海巨蛇', 'SCP-1000 远古森林',
+                'SCP-2317 破碎之门', 'SCP-3999 终焉之地', 'SCP-4000 遗忘森林',
+                'SCP-001 守门人'
+            ];
+            
+            // 奇观效果类型及其权重
+            const WONDER_EFFECTS = [
+                { type: 'draw', name: '抽卡', weight: 4, description: '每回合额外抽牌' },
+                { type: 'score', name: '得分', weight: 6, description: '每回合额外得分' },
+                { type: 'explore', name: '探索', weight: 2, description: '占领时额外探索该路径上的格子' },
+                { type: 'heart_bonus', name: '红桃收获', weight: 2, description: '该路径上每个红桃占领每回合+2分' },
+                { type: 'spade_bonus', name: '黑桃收获', weight: 2, description: '该路径上每个黑桃占领每回合+2分' },
+                { type: 'diamond_bonus', name: '方片收获', weight: 2, description: '该路径上每个方片占领每回合+2分' },
+                { type: 'club_bonus', name: '梅花收获', weight: 2, description: '该路径上每个梅花占领每回合+2分' }
+            ];
+            
+            // 多语言支持
+            const LANGUAGES = {
+                'zh-CN': {
+                    name: '中文',
+                    gameTitle: '文明4X扑克',
+                    gameDescription: '探索、扩张、开发、征服！使用扑克牌建立您的文明',
+                    score: '得分',
+                    turn: '回合',
+                    remainingCards: '剩余牌数',
+                    randomSeed: '随机种子',
+                    newGame: '新游戏',
+                    undo: '撤销',
+                    history: '历史',
+                    gameMessages: '游戏消息',
+                    actions: '行动',
+                    explore: '探索',
+                    occupy: '占领',
+                    endTurn: '结束回合',
+                    gameLog: '游戏日志',
+                    yourHand: '您的手牌',
+                    gameOver: '游戏结束',
+                    finalScore: '最终得分',
+                    playAgainPrompt: '再来一次，创建更强大的文明！',
+                    replaySameSeed: '重玩本局',
+                    shareResult: '分享成绩',
+                    historyBrowser: '历史浏览器',
+                    selectThis: '选择此状态',
+                    cancel: '取消',
+                    move: '操作',
+                    copy: '复制',
+                    share: '分享',
+                    copied: '已复制到剪贴板',
+                    shareText: '我在文明4X扑克游戏中获得了{score}分！随机种子:{seed}，来挑战我吧！',
+                    selectCard: '请选择一张手牌',
+                    selectRegion: '请选择一个区域',
+                    noValidRegion: '没有有效的区域可以选择',
+                    exploreDone: '探索成功！获得{points}分',
+                    occupyDone: '占领成功！每回合获得{points}分',
+                    turnEnded: '回合结束，获得{points}分',
+                    cardDrawn: '抽了一张牌：{rank}{suit}',
+                    gameStart: '游戏开始！起始手牌：5张',
+                    notEnoughRank: '卡牌点数不足以探索该区域',
+                    alreadyOccupied: '该区域已被占领',
+                    notExplored: '该区域尚未探索',
+                    infoSelectCardToExplore: '请选择一张手牌进行探索',
+                    infoSelectCardToOccupy: '请选择一张手牌进行占领',
+                    pathLand: '陆地',
+                    pathOcean: '海洋',
+                    pathDesert: '沙漠',
+                    pathSky: '天空',
+                    standardRegion: '普通区域',
+                    echoRegion: '回声区域',
+                    exploredRegion: '已探索',
+                    unexploredRegion: '未探索',
+                    occupiedRegion: '已占领',
+                    regionRank: '区域等级',
+                    scoreThisTurn: '本回合得分',
+                    totalScore: '总得分',
+                    extraPoints: '额外点数',
+                    heartBonus: '红心加成',
+                    spadeBonus: '黑桃加成',
+                    echoBonus: '回声加成',
+                    exportSuccess: '导出成功'
+                },
+                'en': {
+                    name: 'English',
+                    gameTitle: 'Civilization 4X Poker',
+                    gameDescription: 'Explore, Expand, Exploit, Exterminate! Build your civilization with poker cards',
+                    score: 'Score',
+                    turn: 'Turn',
+                    remainingCards: 'Cards Left',
+                    randomSeed: 'Random Seed',
+                    newGame: 'New Game',
+                    undo: 'Undo',
+                    history: 'History',
+                    gameMessages: 'Game Messages',
+                    actions: 'Actions',
+                    explore: 'Explore',
+                    occupy: 'Occupy',
+                    endTurn: 'End Turn',
+                    gameLog: 'Game Log',
+                    yourHand: 'Your Hand',
+                    gameOver: 'Game Over',
+                    finalScore: 'Final Score',
+                    playAgainPrompt: 'Play again to build an even greater civilization!',
+                    replaySameSeed: 'Replay Same Game',
+                    shareResult: 'Share Result',
+                    historyBrowser: 'History Browser',
+                    selectThis: 'Select This State',
+                    cancel: 'Cancel',
+                    move: 'Move',
+                    copy: 'Copy',
+                    share: 'Share',
+                    copied: 'Copied to clipboard',
+                    shareText: 'I scored {score} points in Civilization 4X Poker! Random seed:{seed}, challenge me!',
+                    selectCard: 'Please select a card from your hand',
+                    selectRegion: 'Please select a region',
+                    noValidRegion: 'No valid region to select',
+                    exploreDone: 'Exploration successful! Gained {points} points',
+                    occupyDone: 'Occupation successful! Gain {points} points per turn',
+                    turnEnded: 'Turn ended, gained {points} points',
+                    cardDrawn: 'Drew a card: {rank}{suit}',
+                    gameStart: 'Game started! Initial hand: 5 cards',
+                    notEnoughRank: 'Card rank not high enough to explore this region',
+                    alreadyOccupied: 'This region is already occupied',
+                    notExplored: 'This region is not explored yet',
+                    infoSelectCardToExplore: 'Select a card to explore',
+                    infoSelectCardToOccupy: 'Select a card to occupy',
+                    pathLand: 'Land',
+                    pathOcean: 'Ocean',
+                    pathDesert: 'Desert',
+                    pathSky: 'Sky',
+                    standardRegion: 'Standard Region',
+                    echoRegion: 'Echo Region',
+                    exploredRegion: 'Explored',
+                    unexploredRegion: 'Unexplored',
+                    occupiedRegion: 'Occupied',
+                    regionRank: 'Region Rank',
+                    scoreThisTurn: 'Score this turn',
+                    totalScore: 'Total score',
+                    extraPoints: 'Extra points',
+                    heartBonus: 'Heart bonus',
+                    spadeBonus: 'Spade bonus',
+                    echoBonus: 'Echo bonus',
+                    exportSuccess: 'Export successful'
+                }
+            };
+            
+            // 游戏状态
+            let gameState = {
+                deck: [],            // 牌堆
+                hand: [],            // 手牌
+                discardPile: [],     // 弃牌堆
+                score: 0,            // 总分数
+                turn: 1,             // 当前回合
+                currentSeed: '',     // 当前种子
+                selectedCard: null,  // 当前选择的手牌索引
+                selectedAction: '',  // 当前选择的行动
+                regions: {},         // 游戏区域状态
+                gameOver: false      // 游戏是否结束
+            };
+            
+            // 历史记录状态
+            let history = [];
+            let currentHistoryIndex = -1;
+            let currentBrowsingIndex = 0;
+            
+            // 游戏日志数据
+            let gameLogData = [];
+            
+            // 当前语言
+            let currentLanguage = 'zh-CN';
+            
+            // 初始化随机数生成器
+            let seededRandom = null;
+            
+            // DOM元素
+            const scoreDisplay = document.getElementById('score');
+            const turnCounter = document.getElementById('turn-counter');
+            const remainingCardsDisplay = document.getElementById('remaining-cards');
+            const handContainer = document.getElementById('hand-container');
+            const gameMessageElement = document.getElementById('game-message');
+            const actionInfoElement = document.getElementById('action-info');
+            const seedDisplay = document.getElementById('seed-display');
+            const resultModal = document.getElementById('result-modal');
+            const finalScoreDisplay = document.getElementById('final-score');
+            const toastElement = document.getElementById('toast');
+            const gameLogElement = document.getElementById('game-log');
+            
+            // 随机加权选择函数
+            function weightedRandomSelect(items, weights) {
+                const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+                let random = seededRandom() * totalWeight;
+                
+                for (let i = 0; i < items.length; i++) {
+                    random -= weights[i];
+                    if (random <= 0) {
+                        return items[i];
+                    }
+                }
+                
+                // 如果出现舍入误差，返回最后一项
+                return items[items.length - 1];
+            }
+            
+            // 创建奇观
+            function createWonder(rank) {
+                // 为奇观选择一个随机名称
+                const wonderNameIndex = Math.floor(seededRandom() * WONDER_NAMES.length);
+                const wonderName = WONDER_NAMES[wonderNameIndex];
+                
+                // 根据等级确定奇观强度，等级越高强度越高的概率越大
+                let tierWeights;
+                if (rank >= 9) {
+                    // 9级以上: 橙色>紫色>蓝色
+                    tierWeights = [5, 3, 2]; // 橙色, 紫色, 蓝色
+                } else if (rank >= 6) {
+                    // 6-8级: 紫色>蓝色>橙色
+                    tierWeights = [2, 5, 3]; // 橙色, 紫色, 蓝色
+                } else {
+                    // 其他等级: 蓝色>紫色>橙色
+                    tierWeights = [1, 3, 6]; // 橙色, 紫色, 蓝色
+                }
+                
+                const tierKeys = Object.keys(WONDER_TIERS);
+                const selectedTierKey = weightedRandomSelect(tierKeys, tierWeights);
+                const tier = WONDER_TIERS[selectedTierKey];
+                
+                // 选择奇观效果
+                const effectWeights = WONDER_EFFECTS.map(effect => effect.weight);
+                const selectedEffect = weightedRandomSelect(WONDER_EFFECTS, effectWeights);
+                
+                // 如果是花色收获效果，简化名称显示
+                if (selectedEffect.type.includes('_bonus')) {
+                    const suit = selectedEffect.type.split('_')[0];
+                    selectedEffect.name = SUIT_SYMBOLS[suit];
+                }
+                
+                // 设置统一的占领条件 - 可以使用J、Q、K、A或者任意红心
+                const occupyCondition = { 
+                    type: 'multiple', 
+                    display: 'J、Q、K、A或红心'
+                };
+                
+                return {
+                    name: wonderName,
+                    tier: selectedTierKey,
+                    effect: selectedEffect,
+                    occupyCondition: occupyCondition,
+                    revealed: false // 未探索前不显示奇观名称
+                };
+            }
+            
+            // 检查卡片是否满足奇观的占领条件
+            function cardMeetsWonderCondition(card, wonderData) {
+                const condition = wonderData.occupyCondition;
+                
+                if (condition.type === 'rank') {
+                    return card.rank === condition.rank;
+                } else if (condition.type === 'suit') {
+                    return card.suit === condition.suit;
+                } else if (condition.type === 'multiple') {
+                    // 检查是否是J、Q、K、A或红心
+                    return card.rank === 'J' || 
+                           card.rank === 'Q' || 
+                           card.rank === 'K' || 
+                           card.rank === 'A' || 
+                           card.suit === 'heart';
+                }
+                
+                return false;
+            }
+            
+            // 初始化游戏区域
+            function initializeGameRegions() {
+                // 初始化区域数据结构
+                gameState.regions = {};
+                
+                // 为每条路径初始化区域
+                for (const pathId of PATHS) {
+                    gameState.regions[pathId] = Array(13).fill().map((_, index) => {
+                        const rank = index + 1;
+                        let type = 'standard';
+                        let wonderData = null;
+                        
+                        // 6-8级有机会生成奇观区域
+                        if (rank >= 6 && rank <= 8) {
+                            // 50%概率为回声区域，20%概率为奇观区域，30%概率为普通区域
+                            const randomVal = seededRandom();
+                            if (randomVal < 0.2) {
+                                type = 'wonder';
+                                wonderData = createWonder(rank);
+                            } else if (randomVal < 0.7) {
+                                type = 'echo';
+                            }
+                        }
+                        // 9级以上有更高概率生成奇观
+                        else if (rank >= 9) {
+                            // 30%概率为奇观区域，40%概率为回声区域，30%概率为普通区域
+                            const randomVal = seededRandom();
+                            if (randomVal < 0.3) {
+                                type = 'wonder';
+                                wonderData = createWonder(rank);
+                            } else if (randomVal < 0.7) {
+                                type = 'echo';
+                            }
+                        }
+                        // 1-4级按原来逻辑处理
+                        else if (rank <= 4) {
+                            // 20%概率为回声区域
+                            if (seededRandom() < 0.2) {
+                                type = 'echo';
+                            }
+                        }
+                        // 5级暂时不处理灾难或战争区域，仍使用普通逻辑
+                        else if (rank === 5) {
+                            // 20%概率为回声区域
+                            if (seededRandom() < 0.2) {
+                                type = 'echo';
+                            }
+                        }
+                        
+                        return {
+                            pathId,              // 路径ID
+                            rank,                // 区域等级 (1-13)
+                            type,                // 区域类型
+                            wonderData,          // 奇观数据（如果是奇观）
+                            status: 'unexplored',// 状态: unexplored, explored, occupied
+                            occupyCard: null,    // 占领的卡牌
+                            points: 0            // 每回合提供的分数
+                        };
+                    });
+                    
+                    // 渲染区域
+                    const regionContainer = document.getElementById(`${pathId}-regions`);
+                    regionContainer.innerHTML = '';
+                    
+                    // 倒序渲染区域（从13到1），显示最高等级(13)在顶部
+                    for (let i = 12; i >= 0; i--) {
+                        const region = gameState.regions[pathId][i];
+                        const regionElement = document.createElement('div');
+                        
+                        // 使用与手牌一致的尺寸
+                        regionElement.className = 'rounded-md w-16 h-24 md:w-20 md:h-30 border shadow-md flex flex-col items-center justify-center cursor-pointer relative';
+                        
+                        // 根据区域状态调整样式
+                        if (region.status === 'unexplored') {
+                            regionElement.classList.add('bg-gray-400', 'dark:bg-gray-700');
+                        } else if (region.status === 'explored') {
+                            regionElement.classList.add('bg-white', 'dark:bg-gray-600');
+                        } else if (region.status === 'occupied') {
+                            regionElement.classList.add('bg-blue-100', 'dark:bg-blue-800');
+                        }
+                        
+                        // 如果是回声区域，添加特殊样式
+                        if (region.type === 'echo' && region.status !== 'occupied') {
+                            regionElement.classList.add('bg-green-200', 'dark:bg-green-800');
+                        }
+                        
+                        // 如果是奇观区域，添加特殊样式
+                        if (region.type === 'wonder' && region.wonderData) {
+                            const tierClass = `wonder-${region.wonderData.tier}`;
+                            regionElement.classList.add(tierClass);
+                        }
+                        
+                        regionElement.dataset.path = pathId;
+                        regionElement.dataset.rank = i + 1;
+                        regionElement.dataset.type = region.type;
+                        
+                        // 区域等级显示
+                        const rankElement = document.createElement('div');
+                        rankElement.className = 'text-sm font-bold absolute top-1 left-1';
+                        rankElement.textContent = i + 1; // 直接显示数字1-13
+                        regionElement.appendChild(rankElement);
+                        
+                        // 状态标识
+                        const statusIndicator = document.createElement('div');
+                        statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
+                        
+                        if (region.status === 'unexplored') {
+                            // 未探索的奇观显示为???
+                            if (region.type === 'wonder') {
+                                statusIndicator.textContent = '???';
+                                statusIndicator.className += ' text-white';
+                            } else {
+                                statusIndicator.textContent = '未探索';
+                                statusIndicator.className += ' text-gray-100 dark:text-gray-300';
+                            }
+                        } else if (region.status === 'explored') {
+                            statusIndicator.textContent = '可占领';
+                            statusIndicator.className += ' text-green-600 dark:text-green-400';
+                        }
+                        
+                        // 只有在非占领状态下才添加状态指示器
+                        if (region.status !== 'occupied') {
+                            regionElement.appendChild(statusIndicator);
+                        }
+                        
+                        // 区域类型指示器（回声区域）
+                        if (region.type === 'echo' && region.status !== 'occupied') {
+                            const typeIndicator = document.createElement('div');
+                            typeIndicator.className = 'absolute top-1 right-1 w-2 h-2 rounded-full bg-green-400 dark:bg-green-300';
+                            regionElement.appendChild(typeIndicator);
+                        }
+                        
+                        // 添加点击事件
+                        regionElement.addEventListener('click', () => handleRegionClick(pathId, i));
+                        
+                        regionContainer.appendChild(regionElement);
+                    }
+                }
+            }
+            
+            // 检查区域是否可以被探索（必须相邻于已探索或已占领区域）
+            function canExploreRegion(pathId, index) {
+                // 获取同一路径中rank值低1的区域
+                const lowerRankIndex = index - 1;
+                
+                // 如果是最低等级(1)，总是可以探索
+                if (index === 0) return true;
+                
+                // 检查低一级区域是否已被探索或占领
+                if (lowerRankIndex >= 0) {
+                    const lowerRegion = gameState.regions[pathId][lowerRankIndex];
+                    if (lowerRegion.status === 'explored' || lowerRegion.status === 'occupied') {
+                        return true;
+                    }
+                }
+                
+                return false;
+            }
+            
+            // 在格子上显示临时错误提示
+            function showErrorOnRegion(regionElement, message) {
+                // 创建错误提示元素
+                const errorTooltip = document.createElement('div');
+                errorTooltip.className = 'absolute inset-0 bg-red-500 bg-opacity-80 flex items-center justify-center rounded-md z-10';
+                errorTooltip.style.animation = 'fadeIn 0.2s ease-out';
+                
+                const textElement = document.createElement('div');
+                textElement.className = 'text-white text-xs font-bold px-1 text-center';
+                textElement.textContent = message;
+                
+                errorTooltip.appendChild(textElement);
+                regionElement.appendChild(errorTooltip);
+                
+                // 2秒后自动移除
+                setTimeout(() => {
+                    errorTooltip.style.animation = 'fadeOut 0.5s ease-out';
+                    setTimeout(() => {
+                        if (regionElement.contains(errorTooltip)) {
+                            regionElement.removeChild(errorTooltip);
+                        }
+                    }, 500);
+                }, 2000);
+            }
+            
+            // 处理区域点击事件
+            function handleRegionClick(pathId, index) {
+                // 获取区域元素
+                const regionContainer = document.getElementById(`${pathId}-regions`);
+                const displayIndex = 12 - index;
+                const regionElement = regionContainer.children[displayIndex];
+                
+                // 检查是否选择了手牌
+                if (gameState.selectedCard === null) {
+                    showErrorOnRegion(regionElement, t('selectCard'));
+                    showMessage(t('selectCard'));
+                    return;
+                }
+                
+                const region = gameState.regions[pathId][index];
+                const card = gameState.hand[gameState.selectedCard];
+                const cardRank = RANK_VALUES[card.rank];
+                
+                // 自动判断操作类型
+                if (region.status === 'unexplored') {
+                    // 探索操作
+                    
+                    // 计算有效点数（黑桃翻倍）
+                    let effectiveRank = cardRank;
+                    if (card.suit === 'spade') {
+                        effectiveRank = cardRank * 2;
+                    }
+                    
+                    // 检查卡牌点数是否足够
+                    if (effectiveRank < region.rank) {
+                        showErrorOnRegion(regionElement, t('notEnoughRank'));
+                        showMessage(t('notEnoughRank'));
+                        return;
+                    }
+                    
+                    // 检查是否可以探索该区域（必须相邻于已探索区域）
+                    if (!canExploreRegion(pathId, index)) {
+                        showErrorOnRegion(regionElement, '只能探索相邻格子');
+                        showMessage('只能探索已探索区域相邻的格子');
+                        return;
+                    }
+                    
+                    // 执行探索行动
+                    exploreRegion(pathId, index, gameState.selectedCard);
+                } 
+                else if (region.status === 'explored') {
+                    // 占领操作
+                    occupyRegion(pathId, index, gameState.selectedCard);
+                }
+                else if (region.status === 'occupied') {
+                    // 已被占领
+                    showErrorOnRegion(regionElement, t('alreadyOccupied'));
+                    showMessage(t('alreadyOccupied'));
+                }
+            }
+            
+            // 探索区域
+            function exploreRegion(pathId, index, cardIndex) {
+                // 获取选择的卡牌和区域
+                const card = gameState.hand[cardIndex];
+                const region = gameState.regions[pathId][index];
+                const cardRank = RANK_VALUES[card.rank];
+                
+                // 计算探索得分
+                let points = REGION_TYPES[region.type].explorePoints;
+                let bonusInfo = '';
+                
+                // 黑桃探索效果：rank值翻倍
+                // 黑桃的卡牌在探索时，相当于点数翻倍
+                let effectiveRank = cardRank;
+                if (card.suit === 'spade') {
+                    effectiveRank = cardRank * 2;
+                    bonusInfo = `(${t('spadeBonus')}: rank ${cardRank}→${effectiveRank})`;
+                }
+                
+                // 如果有效rank值小于区域等级，无法探索
+                if (effectiveRank < region.rank) {
+                    showMessage(t('notEnoughRank'));
+                    return;
+                }
+                
+                // 更新分数
+                gameState.score += points;
+                scoreDisplay.textContent = gameState.score;
+                
+                // 更新区域状态
+                region.status = 'explored';
+                
+                // 更新区域显示
+                updateRegionDisplay(pathId, index);
+                
+                // 从手牌中移除卡牌，加入弃牌堆
+                gameState.discardPile.push(card);
+                gameState.hand.splice(cardIndex, 1);
+                
+                // 更新弃牌堆计数
+                updateDiscardCount();
+                
+                // 重新渲染手牌
+                renderHand();
+                
+                // 记录操作
+                addLogEntry(`${t('explore')}: ${PATH_NAMES[pathId]} ${region.rank} (${card.rank}${SUIT_SYMBOLS[card.suit]}) +${points}分 ${bonusInfo}`);
+                
+                // 显示消息
+                showMessage(t('exploreDone', {points: points}));
+                
+                // 重置选择状态
+                resetSelectionState();
+                
+                // 保存游戏状态到历史记录
+                addToHistory(saveGameState());
+            }
+            
+            // 处理奇观占领效果
+            function processWonderEffects(region, pathId) {
+                const wonderTier = region.wonderData.tier;
+                const effect = region.wonderData.effect;
+                const tierData = WONDER_TIERS[wonderTier];
+                const multiplier = tierData.effectMultiplier;
+                
+                let points = 0;
+                let effectDescription = '';
+                let immediatePoints = tierData.baseScore;
+                
+                // 处理不同的奇观效果类型
+                switch(effect.type) {
+                    case 'draw':
+                        // 抽卡效果：每回合额外抽牌
+                        // 这个效果会在endTurn中处理
+                        region.wonderEffect = {
+                            type: 'draw',
+                            value: multiplier
+                        };
+                        effectDescription = `每回合多抽${multiplier}张`;
+                        points = 0; // 这个效果不提供直接分数
+                        break;
+                        
+                    case 'score':
+                        // 得分效果：每回合额外得分
+                        points = 10 * multiplier; // 橙色+30/t, 紫色+20/t, 蓝色+10/t
+                        effectDescription = `每回合+${points}分`;
+                        break;
+                        
+                    case 'explore':
+                        // 探索效果：立即探索该路径上的额外格子
+                        const extraExplores = multiplier;
+                        
+                        // 找到当前已探索的最高等级区域
+                        let highestExploredRank = 0;
+                        for (const r of gameState.regions[pathId]) {
+                            if (r.status !== 'unexplored' && r.rank > highestExploredRank) {
+                                highestExploredRank = r.rank;
+                            }
+                        }
+                        
+                        // 探索额外的格子
+                        let exploredCount = 0;
+                        for (let i = 0; i < gameState.regions[pathId].length && exploredCount < extraExplores; i++) {
+                            const r = gameState.regions[pathId][i];
+                            if (r.rank > highestExploredRank && r.status === 'unexplored') {
+                                r.status = 'explored';
+                                updateRegionDisplay(pathId, i);
+                                exploredCount++;
+                            }
+                        }
+                        
+                        effectDescription = `额外探索了${exploredCount}格`;
+                        break;
+                        
+                    case 'heart_bonus':
+                    case 'spade_bonus':
+                    case 'diamond_bonus':
+                    case 'club_bonus':
+                        // 花色收获效果：该路径上的对应花色每回合按3×n²计分
+                        const suit = effect.type.split('_')[0]; // 'heart', 'spade', 'diamond', 'club'
+                        
+                        region.wonderEffect = {
+                            type: 'suit_bonus',
+                            suit: suit,
+                            pathId: pathId,
+                            formula: 'squared' // 使用3×n²公式
+                        };
+                        
+                        // 计算当前路径上已有的该花色牌数
+                        let suitCount = 0;
+                        for (const r of gameState.regions[pathId]) {
+                            if (r.status === 'occupied' && r.occupyCard && r.occupyCard.suit === suit) {
+                                suitCount++;
+                            }
+                        }
+                        
+                        // 使用新公式：3 × (花色数量)²
+                        points = 3 * (suitCount * suitCount);
+                        effectDescription = `${PATH_NAMES[pathId]}路径上${SUIT_SYMBOLS[suit]}：3×数量²分/回合`;
+                        break;
+                }
+                
+                // 立即增加分数
+                gameState.score += immediatePoints;
+                scoreDisplay.textContent = gameState.score;
+                
+                return {
+                    points,
+                    effectDescription,
+                    immediatePoints
+                };
+            }
+            
+            // 占领区域
+            function occupyRegion(pathId, index, cardIndex) {
+                // 获取选择的卡牌和区域
+                const card = gameState.hand[cardIndex];
+                const region = gameState.regions[pathId][index];
+                const cardRank = RANK_VALUES[card.rank];
+                
+                // 检查是否是奇观区域，需要特殊处理
+                if (region.type === 'wonder' && region.wonderData) {
+                    // 检查卡牌是否满足奇观占领条件
+                    if (!cardMeetsWonderCondition(card, region.wonderData)) {
+                        const condition = region.wonderData.occupyCondition;
+                        let errorMsg = '';
+                        
+                        if (condition.type === 'rank') {
+                            errorMsg = `需要使用${condition.display}占领此奇观`;
+                        } else if (condition.type === 'suit') {
+                            errorMsg = `需要使用${condition.display}占领此奇观`;
+                        }
+                        
+                        // 显示错误消息
+                        const regionContainer = document.getElementById(`${pathId}-regions`);
+                        const displayIndex = 12 - index;
+                        const regionElement = regionContainer.children[displayIndex];
+                        showErrorOnRegion(regionElement, errorMsg);
+                        showMessage(errorMsg);
+                        return;
+                    }
+                    
+                    // 处理奇观效果
+                    const wonderEffectResult = processWonderEffects(region, pathId);
+                    
+                    // 更新区域状态
+                    region.status = 'occupied';
+                    region.occupyCard = card;
+                    region.points = wonderEffectResult.points; // 每回合得分
+                    
+                    // 更新区域显示
+                    updateRegionDisplay(pathId, index);
+                    
+                    // 更新所有花色收获奇观的得分
+                    updateAllSuitBonusWonders(pathId, card.suit);
+                    
+                    // 从手牌中移除卡牌
+                    gameState.hand.splice(cardIndex, 1);
+                    
+                    // 重新渲染手牌
+                    renderHand();
+                    
+                    // 记录操作和奇观效果
+                    const wonderTierName = WONDER_TIERS[region.wonderData.tier].name;
+                    addLogEntry(`${t('occupy')}: ${PATH_NAMES[pathId]} ${region.rank} 奇观「${region.wonderData.name}」(${card.rank}${SUIT_SYMBOLS[card.suit]}) 即时+${wonderEffectResult.immediatePoints}分 ${wonderEffectResult.points > 0 ? '+' + wonderEffectResult.points + '分/回合' : ''} 效果: ${wonderEffectResult.effectDescription}`);
+                    
+                    // 显示消息
+                    showMessage(`占领奇观成功！获得${wonderEffectResult.immediatePoints}分，${wonderEffectResult.effectDescription}`);
+                    
+                    // 重置选择状态
+                    resetSelectionState();
+                    
+                    // 保存游戏状态到历史记录
+                    addToHistory(saveGameState());
+                    return;
+                }
+                
+                // 非奇观区域的常规占领逻辑
+                let points = 0;
+                let bonusInfo = '';
+                
+                if (region.type === 'standard') {
+                    // 普通区域固定得分 - 默认1分/回合
+                    points = REGION_TYPES.standard.occupyPoints;
+                    
+                    // 红桃效果：得分翻倍（固定值变为2分/回合）
+                    if (card.suit === 'heart') {
+                        points = 2; // 红桃直接给2分，而不是1分
+                        bonusInfo = `(${t('heartBonus')}: 1→2)`;
+                    }
+                } else if (region.type === 'echo') {
+                    // 回声区域正常得分 = 牌点数 × 2
+                    points = cardRank * 2;
+                    
+                    // 红桃效果：回声区域得分变为 牌点数×2 + 2
+                    if (card.suit === 'heart') {
+                        // 显示原始得分和加成后的得分，以便更清晰
+                        let originalPoints = points;
+                        points += 2; // 额外+2分
+                        bonusInfo = `(${t('heartBonus')}: ${originalPoints}→${points})`;
+                    }
+                    
+                    // 添加回声区域标识
+                    if (!bonusInfo) {
+                        bonusInfo = t('echoBonus');
+                    } else {
+                        bonusInfo += ` ${t('echoBonus')}`;
+                    }
+                }
+                
+                // 更新区域状态
+                region.status = 'occupied';
+                region.occupyCard = card;
+                region.points = points;
+                
+                // 更新区域显示
+                updateRegionDisplay(pathId, index);
+                
+                // 更新所有花色收获奇观的得分显示
+                updateAllSuitBonusWonders();
+                
+                // 从手牌中移除卡牌
+                gameState.hand.splice(cardIndex, 1);
+                
+                // 重新渲染手牌
+                renderHand();
+                
+                // 记录操作
+                addLogEntry(`${t('occupy')}: ${PATH_NAMES[pathId]} ${region.rank} (${card.rank}${SUIT_SYMBOLS[card.suit]}) +${points}分/回合 ${bonusInfo}`);
+                
+                // 显示消息
+                showMessage(t('occupyDone', {points: points}));
+                
+                // 重置选择状态
+                resetSelectionState();
+                
+                // 保存游戏状态到历史记录
+                addToHistory(saveGameState());
+            }
+            
+            // 更新区域显示
+            function updateRegionDisplay(pathId, index) {
+                const region = gameState.regions[pathId][index];
+                const regionContainer = document.getElementById(`${pathId}-regions`);
+                
+                // 注意：我们倒序渲染了区域，所以索引需要调整
+                // 在倒序渲染中，索引12(13)在容器的第0个位置，索引0(1)在容器的第12个位置
+                const displayIndex = 12 - index;
+                const regionElement = regionContainer.children[displayIndex];
+                
+                // 清空现有内容
+                regionElement.innerHTML = '';
+                
+                // 更新样式 - 使用与手牌大小一致的尺寸
+                regionElement.className = 'rounded-md w-16 h-24 md:w-20 md:h-30 border shadow-md flex flex-col items-center justify-center cursor-pointer relative';
+                
+                // 根据区域状态和类型设置样式
+                if (region.status === 'unexplored') {
+                    regionElement.classList.add('bg-gray-400', 'dark:bg-gray-700');
+                } else if (region.status === 'explored') {
+                    regionElement.classList.add('bg-white', 'dark:bg-gray-600');
+                } else if (region.status === 'occupied') {
+                    regionElement.classList.add('bg-blue-100', 'dark:bg-blue-800');
+                }
+                
+                // 如果是回声区域，添加特殊样式
+                if (region.type === 'echo' && region.status !== 'occupied') {
+                    regionElement.classList.add('bg-green-200', 'dark:bg-green-800');
+                }
+                
+                // 如果是奇观区域，添加特殊样式
+                if (region.type === 'wonder' && region.wonderData) {
+                    // 根据奇观级别添加相应的样式类
+                    const tierClass = `wonder-${region.wonderData.tier}`;
+                    regionElement.classList.add(tierClass);
+                }
+                
+                // 区域等级显示（顶部）
+                const rankElement = document.createElement('div');
+                rankElement.className = 'text-sm font-bold absolute top-1 left-1';
+                rankElement.textContent = index + 1; // 显示数字1-13
+                regionElement.appendChild(rankElement);
+                
+                // 根据区域类型和状态添加不同的内容
+                if (region.type === 'wonder') {
+                    // 奇观区域特殊显示
+                    if (region.status === 'unexplored') {
+                        // 未探索的奇观显示为???，但显示颜色级别
+                        const unknownElement = document.createElement('div');
+                        unknownElement.className = 'text-lg font-bold text-white text-center';
+                        unknownElement.textContent = '???';
+                        regionElement.appendChild(unknownElement);
+                    } 
+                    else if (region.status === 'explored') {
+                        // 已探索奇观显示名称和条件
+                        const nameElement = document.createElement('div');
+                        nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                        nameElement.textContent = region.wonderData.name;
+                        regionElement.appendChild(nameElement);
+                        
+                        // 显示占领条件
+                        const conditionElement = document.createElement('div');
+                        conditionElement.className = 'text-xs text-center';
+                        conditionElement.textContent = '需要: J、Q、K、A或红心';
+                        regionElement.appendChild(conditionElement);
+                        
+                        // 显示奇观效果
+                        const effectElement = document.createElement('div');
+                        effectElement.className = 'text-xs text-center mt-1 px-1';
+                        const effectText = region.wonderData.effect.name;
+                        effectElement.textContent = `[${effectText}]`;
+                        regionElement.appendChild(effectElement);
+                    }
+                    else if (region.status === 'occupied') {
+                        // 已占领奇观显示名称和效果
+                        const nameElement = document.createElement('div');
+                        nameElement.className = 'text-xs font-bold text-center px-1 mb-1';
+                        nameElement.textContent = region.wonderData.name;
+                        regionElement.appendChild(nameElement);
+                        
+                        // 卡牌展示
+                        if (region.occupyCard) {
+                            const card = region.occupyCard;
+                            const cardElement = document.createElement('div');
+                            cardElement.className = 'flex items-center justify-center';
+                            
+                            const cardRank = document.createElement('div');
+                            cardRank.className = 'text-sm font-bold';
+                            cardRank.textContent = card.rank;
+                            
+                            const cardSuit = document.createElement('div');
+                            cardSuit.className = `${card.suit} text-lg`;
+                            cardSuit.textContent = SUIT_SYMBOLS[card.suit];
+                            
+                            cardElement.appendChild(cardRank);
+                            cardElement.appendChild(cardSuit);
+                            regionElement.appendChild(cardElement);
+                        }
+                        
+                        // 奇观效果
+                        const effectElement = document.createElement('div');
+                        effectElement.className = 'text-xs text-center mt-1 px-1';
+                        const effectText = region.wonderData.effect.name;
+                        effectElement.textContent = `[${effectText}]`;
+                        regionElement.appendChild(effectElement);
+                        
+                        // 得分显示
+                        if (region.points > 0) {
+                            const pointsElement = document.createElement('div');
+                            pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
+                            pointsElement.textContent = `+${region.points}`;
+                            regionElement.appendChild(pointsElement);
+                        }
+                    }
+                } 
+                else {
+                    // 非奇观区域的常规显示
+                    // 状态标识 - 只有在非占领状态时才添加
+                    if (region.status !== 'occupied') {
+                        const statusIndicator = document.createElement('div');
+                        statusIndicator.className = 'absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs font-bold';
+                        
+                        if (region.status === 'unexplored') {
+                            statusIndicator.textContent = '未探索';
+                            statusIndicator.className += ' text-gray-100 dark:text-gray-300';
+                        } else if (region.status === 'explored') {
+                            statusIndicator.textContent = '可占领';
+                            statusIndicator.className += ' text-green-600 dark:text-green-400';
+                        }
+                        
+                        regionElement.appendChild(statusIndicator);
+                    }
+                    
+                    // 如果是回声区域，添加标识
+                    if (region.type === 'echo' && region.status !== 'occupied') {
+                        const typeIndicator = document.createElement('div');
+                        typeIndicator.className = 'absolute top-1 right-1 w-2 h-2 rounded-full bg-green-400 dark:bg-green-300';
+                        regionElement.appendChild(typeIndicator);
+                    }
+                    
+                    // 如果是占领状态，显示卡牌和得分
+                    if (region.status === 'occupied' && region.occupyCard) {
+                        const card = region.occupyCard;
+                        
+                        // 卡牌信息（中间）
+                        const cardInfo = document.createElement('div');
+                        cardInfo.className = 'flex flex-col items-center justify-center';
+                        
+                        // 卡牌中心显示
+                        const cardRank = document.createElement('div');
+                        cardRank.className = 'text-lg font-bold';
+                        cardRank.textContent = card.rank;
+                        
+                        const cardSuit = document.createElement('div');
+                        cardSuit.className = `${card.suit} text-2xl`;
+                        cardSuit.textContent = SUIT_SYMBOLS[card.suit];
+                        
+                        cardInfo.appendChild(cardRank);
+                        cardInfo.appendChild(cardSuit);
+                        regionElement.appendChild(cardInfo);
+                        
+                        // 得分显示（底部）
+                        const pointsElement = document.createElement('div');
+                        pointsElement.className = 'absolute bottom-1 right-1 text-xs font-bold bg-blue-200 dark:bg-blue-600 px-1 rounded';
+                        pointsElement.textContent = `+${region.points}`;
+                        regionElement.appendChild(pointsElement);
+                    }
+                }
+            }
+            
+            // 弃牌
+            function discardCard() {
+                if (gameState.selectedCard === null) {
+                    showMessage('请先选择要弃掉的手牌');
+                    return;
+                }
+                
+                // 获取选中的卡牌
+                const card = gameState.hand[gameState.selectedCard];
+                
+                // 加入弃牌堆
+                gameState.discardPile.push(card);
+                
+                // 从手牌中移除
+                gameState.hand.splice(gameState.selectedCard, 1);
+                
+                // 更新弃牌堆计数
+                updateDiscardCount();
+                
+                // 记录操作
+                addLogEntry(`弃牌: ${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                
+                // 重置选择状态
+                resetSelectionState();
+                
+                // 重新渲染手牌
+                renderHand();
+                
+                // 显示消息
+                showMessage(`已弃掉 ${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                
+                // 保存游戏状态到历史记录
+                addToHistory(saveGameState());
+            }
+            
+            // 显示弃牌提示
+            function showDiscardPrompt() {
+                // 创建弹窗提示
+                const promptOverlay = document.createElement('div');
+                promptOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                
+                const promptBox = document.createElement('div');
+                promptBox.className = 'bg-white dark:bg-gray-800 p-5 rounded-lg shadow-lg max-w-md w-full mx-4 text-center';
+                
+                const title = document.createElement('h3');
+                title.className = 'text-xl font-bold mb-3';
+                title.textContent = '手牌已达上限';
+                
+                const message = document.createElement('p');
+                message.className = 'mb-4';
+                message.textContent = '您的手牌已达到上限(10张)。请先弃掉一些手牌，然后再结束回合。';
+                
+                const button = document.createElement('button');
+                button.className = 'bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg';
+                button.textContent = '确定';
+                button.addEventListener('click', () => {
+                    document.body.removeChild(promptOverlay);
+                });
+                
+                promptBox.appendChild(title);
+                promptBox.appendChild(message);
+                promptBox.appendChild(button);
+                promptOverlay.appendChild(promptBox);
+                
+                document.body.appendChild(promptOverlay);
+            }
+            
+            // 结束回合
+            function endTurn() {
+                // 如果手牌已满且牌库还有牌，提示玩家先弃牌
+                const MAX_HAND_SIZE = 10;
+                if (gameState.hand.length >= MAX_HAND_SIZE && gameState.deck.length > 0) {
+                    showDiscardPrompt();
+                    return;
+                }
+                
+                // 计算回合得分和奇观效果
+                let turnPoints = 0;
+                let extraDraws = 0;  // 记录奇观提供的额外抽牌次数
+                let wonderEffects = []; // 记录激活的奇观效果
+                
+                // 遍历所有区域，结算占领区域的分数和奇观效果
+                for (const pathId of PATHS) {
+                    for (const region of gameState.regions[pathId]) {
+                        // 结算基础得分
+                        if (region.status === 'occupied' && region.points > 0) {
+                            turnPoints += region.points;
+                        }
+                        
+                        // 处理奇观特殊效果
+                        if (region.status === 'occupied' && region.type === 'wonder' && region.wonderData && region.wonderEffect) {
+                            const effect = region.wonderEffect;
+                            
+                            // 处理抽卡效果
+                            if (effect.type === 'draw') {
+                                extraDraws += effect.value;
+                                wonderEffects.push(`「${region.wonderData.name}」: 多抽${effect.value}张`);
+                            }
+                            
+                            // 处理花色加成效果
+                            if (effect.type === 'suit_bonus') {
+                                // 重新计算花色数量和得分
+                                if (effect.formula === 'squared') {
+                                    // 计算该路径上匹配花色的数量
+                                    let suitCount = 0;
+                                    for (const r of gameState.regions[effect.pathId]) {
+                                        if (r.status === 'occupied' && r.occupyCard && r.occupyCard.suit === effect.suit) {
+                                            suitCount++;
+                                        }
+                                    }
+                                    
+                                    // 使用3×n²公式计算得分
+                                    const newPoints = 3 * (suitCount * suitCount);
+                                    
+                                    // 更新区域得分
+                                    region.points = newPoints;
+                                    
+                                    // 记录效果描述
+                                    wonderEffects.push(`「${region.wonderData.name}」: ${PATH_NAMES[effect.pathId]}路径上${SUIT_SYMBOLS[effect.suit]}(${suitCount}个): ${newPoints}分/回合`);
+                                } else {
+                                    wonderEffects.push(`「${region.wonderData.name}」: ${PATH_NAMES[effect.pathId]}路径上的${SUIT_SYMBOLS[effect.suit]}收获效果`);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // 更新总分
+                gameState.score += turnPoints;
+                scoreDisplay.textContent = gameState.score;
+                
+                // 增加回合数
+                gameState.turn++;
+                turnCounter.textContent = gameState.turn;
+                
+                // 记录操作和奇观效果
+                let logMessage = `${t('endTurn')}: +${turnPoints}分`;
+                if (wonderEffects.length > 0) {
+                    logMessage += ` (奇观效果: ${wonderEffects.join(", ")})`;
+                }
+                addLogEntry(logMessage);
+                
+                // 抽牌处理 - 先抽基础牌，然后抽奇观提供的额外牌
+                let cardsDrawn = [];
+                
+                // 基础抽牌 - 每回合抽1张
+                if (gameState.deck.length > 0) {
+                    const card = drawCard();
+                    gameState.hand.push(card);
+                    cardsDrawn.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                }
+                
+                // 奇观额外抽牌
+                for (let i = 0; i < extraDraws && gameState.deck.length > 0; i++) {
+                    const card = drawCard();
+                    gameState.hand.push(card);
+                    cardsDrawn.push(`${card.rank}${SUIT_SYMBOLS[card.suit]}`);
+                }
+                
+                // 记录抽牌
+                if (cardsDrawn.length > 0) {
+                    const drawMessage = cardsDrawn.length === 1
+                        ? `抽了一张牌: ${cardsDrawn[0]}`
+                        : `抽了${cardsDrawn.length}张牌: ${cardsDrawn.join(", ")}`;
+                    addLogEntry(drawMessage);
+                }
+                
+                // 牌库空了的处理
+                if (gameState.deck.length === 0) {
+                    // 检查是否还有手牌
+                    if (gameState.hand.length === 0) {
+                        // 没有手牌也没有牌库，游戏结束
+                        gameState.gameOver = true;
+                        finalScoreDisplay.textContent = gameState.score;
+                        resultModal.classList.remove('hidden');
+                        
+                        // 记录游戏结束
+                        addLogEntry(`游戏结束! 最终得分: ${gameState.score}`);
+                    } else {
+                        // 提示玩家牌库已空
+                        showMessage('牌库已空，请继续使用手牌');
+                        addLogEntry(`牌库已空，继续使用手牌`);
+                    }
+                }
+                
+                // 重新渲染手牌
+                renderHand();
+                
+                // 显示消息
+                let turnMessage = t('turnEnded', {points: turnPoints});
+                if (extraDraws > 0) {
+                    turnMessage += ` 额外抽了${extraDraws}张牌`;
+                }
+                showMessage(turnMessage);
+                
+                // 检查游戏是否结束
+                checkGameOver();
+                
+                // 保存游戏状态到历史记录
+                addToHistory(saveGameState());
+            }
+            
+            // 检查游戏是否结束
+            function checkGameOver() {
+                // 如果没有牌可抽并且手牌为空，游戏结束
+                if (gameState.deck.length === 0 && gameState.hand.length === 0) {
+                    gameState.gameOver = true;
+                    
+                    // 显示结果弹窗
+                    finalScoreDisplay.textContent = gameState.score;
+                    resultModal.classList.remove('hidden');
+                }
+            }
+            
+            // 创建并洗牌
+            function createDeck() {
+                const deck = [];
+                
+                for (const suit of SUITS) {
+                    for (const rank of RANKS) {
+                        deck.push({ suit, rank });
+                    }
+                }
+                
+                return deck;
+            }
+            
+            // Fisher-Yates洗牌，使用seededRandom
+            function shuffleDeck(deck) {
+                const shuffled = [...deck];
+                
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(seededRandom() * (i + 1));
+                    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                }
+                
+                return shuffled;
+            }
+            
+            // 抽一张牌
+            function drawCard() {
+                if (gameState.deck.length === 0) {
+                    return null;
+                }
+                
+                remainingCardsDisplay.textContent = gameState.deck.length - 1;
+                return gameState.deck.pop();
+            }
+            
+            // 渲染手牌
+            function renderHand() {
+                handContainer.innerHTML = '';
+                
+                if (gameState.hand.length === 0) {
+                    const emptyText = document.createElement('div');
+                    emptyText.className = 'text-gray-400 dark:text-gray-600 text-center w-full py-4';
+                    emptyText.textContent = '没有手牌';
+                    handContainer.appendChild(emptyText);
+                } else {
+                    gameState.hand.forEach((card, index) => {
+                        const cardElement = document.createElement('div');
+                        cardElement.className = `card hand-card transition-transform duration-200 w-16 h-24 md:w-20 md:h-30 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-md flex flex-col items-center justify-center ${gameState.selectedCard === index ? 'border-primary border-2 -translate-y-4' : ''}`;
+                        cardElement.dataset.index = index;
+                        
+                        // 卡牌内容
+                        const rankElement = document.createElement('div');
+                        rankElement.className = 'text-sm md:text-base';
+                        rankElement.textContent = card.rank;
+                        
+                        const suitElement = document.createElement('div');
+                        suitElement.className = `${card.suit} text-lg md:text-2xl`;
+                        suitElement.textContent = SUIT_SYMBOLS[card.suit];
+                        
+                        cardElement.appendChild(rankElement);
+                        cardElement.appendChild(suitElement);
+                        
+                        // 添加点击事件
+                        cardElement.addEventListener('click', () => selectCard(index));
+                        
+                        handContainer.appendChild(cardElement);
+                    });
+                }
+                
+                // 更新手牌计数
+                const handCountEl = document.getElementById('hand-count');
+                if (handCountEl) {
+                    handCountEl.textContent = gameState.hand.length;
+                    
+                    // 如果手牌接近上限，高亮显示
+                    if (gameState.hand.length >= 8) {
+                        handCountEl.className = 'font-bold';
+                        if (gameState.hand.length >= 10) {
+                            handCountEl.className += ' text-red-500 dark:text-red-400';
+                        } else {
+                            handCountEl.className += ' text-yellow-500 dark:text-yellow-400';
+                        }
+                    } else {
+                        handCountEl.className = '';
+                    }
+                }
+                
+                // 更新弃牌按钮状态
+                const discardBtn = document.getElementById('discard-btn');
+                if (discardBtn) {
+                    discardBtn.disabled = gameState.selectedCard === null;
+                    discardBtn.classList.toggle('opacity-50', gameState.selectedCard === null);
+                }
+            }
+            
+            // 选择手牌
+            function selectCard(index) {
+                // 如果已经选择了这张牌，取消选择
+                if (gameState.selectedCard === index) {
+                    gameState.selectedCard = null;
+                    actionInfoElement.textContent = '';
+                } else {
+                    gameState.selectedCard = index;
+                    const card = gameState.hand[index];
+                    actionInfoElement.textContent = `已选择: ${card.rank}${SUIT_SYMBOLS[card.suit]} - 点击区域执行操作`;
+                }
+                
+                // 重新渲染手牌，显示选中状态
+                renderHand();
+            }
+            
+            // 选择行动
+            function selectAction(action) {
+                // 如果已经选择了这个行动，取消选择
+                if (gameState.selectedAction === action) {
+                    resetSelectionState();
+                } else {
+                    gameState.selectedAction = action;
+                    gameState.selectedCard = null; // 重置选中的卡牌
+                    
+                    // 更新按钮样式
+                    document.getElementById('explore-btn').classList.toggle('ring-2', action === 'explore');
+                    document.getElementById('occupy-btn').classList.toggle('ring-2', action === 'occupy');
+                    
+                    // 显示相关提示
+                    if (action === 'explore') {
+                        showMessage(t('infoSelectCardToExplore'));
+                    } else if (action === 'occupy') {
+                        showMessage(t('infoSelectCardToOccupy'));
+                    }
+                }
+                
+                // 更新操作信息
+                updateActionInfo();
+            }
+            
+            // 重置选择状态
+            function resetSelectionState() {
+                gameState.selectedAction = '';
+                gameState.selectedCard = null;
+                
+                // 重新渲染手牌
+                renderHand();
+                
+                // 清空操作信息
+                actionInfoElement.textContent = '';
+            }
+            
+            // 更新操作信息
+            function updateActionInfo() {
+                if (!gameState.selectedAction) {
+                    actionInfoElement.textContent = '';
+                    return;
+                }
+                
+                if (gameState.selectedCard === null) {
+                    actionInfoElement.textContent = t('selectCard');
+                } else {
+                    const card = gameState.hand[gameState.selectedCard];
+                    
+                    if (gameState.selectedAction === 'explore') {
+                        actionInfoElement.textContent = `探索: 使用 ${card.rank}${SUIT_SYMBOLS[card.suit]} 探索未占领区域`;
+                    } else if (gameState.selectedAction === 'occupy') {
+                        actionInfoElement.textContent = `占领: 使用 ${card.rank}${SUIT_SYMBOLS[card.suit]} 占领已探索区域`;
+                    }
+                }
+            }
+            
+            // 显示消息
+            function showMessage(message) {
+                gameMessageElement.textContent = message;
+                
+                // 添加动画效果
+                gameMessageElement.classList.add('text-primary');
+                setTimeout(() => {
+                    gameMessageElement.classList.remove('text-primary');
+                }, 2000);
+            }
+            
+            // 添加日志条目
+            function addLogEntry(message) {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'mb-1 pb-1 border-b border-gray-200 dark:border-gray-700';
+                
+                // 回合前缀
+                const turnPrefix = document.createElement('span');
+                turnPrefix.className = 'font-bold';
+                turnPrefix.textContent = `[${gameState.turn}] `;
+                
+                logEntry.appendChild(turnPrefix);
+                logEntry.appendChild(document.createTextNode(message));
+                
+                gameLogElement.insertBefore(logEntry, gameLogElement.firstChild);
+                
+                // 记录到日志数据
+                gameLogData.push({
+                    turn: gameState.turn,
+                    message: message,
+                    timestamp: new Date().toISOString(),
+                    score: gameState.score
+                });
+            }
+            
+            // 保存游戏状态
+            function saveGameState() {
+                return {
+                    deck: [...gameState.deck],
+                    hand: [...gameState.hand],
+                    discardPile: [...gameState.discardPile],
+                    score: gameState.score,
+                    turn: gameState.turn,
+                    currentSeed: gameState.currentSeed,
+                    regions: JSON.parse(JSON.stringify(gameState.regions)),
+                    gameOver: gameState.gameOver
+                };
+            }
+            
+            // 将新状态添加到历史记录
+            function addToHistory(state) {
+                // 如果在历史中间点进行了新操作，删除该点之后的所有历史
+                if (currentHistoryIndex >= 0 && currentHistoryIndex < history.length - 1) {
+                    history = history.slice(0, currentHistoryIndex + 1);
+                }
+                
+                // 添加新状态到历史记录
+                history.push(state);
+                currentHistoryIndex = history.length - 1;
+                
+                // 更新撤销按钮状态
+                updateUndoButton();
+            }
+            
+            // 恢复游戏状态
+            function restoreGameState(state) {
+                // 恢复所有游戏状态
+                gameState.deck = [...state.deck];
+                gameState.hand = [...state.hand];
+                gameState.discardPile = [...state.discardPile];
+                gameState.score = state.score;
+                gameState.turn = state.turn;
+                gameState.currentSeed = state.currentSeed;
+                gameState.regions = JSON.parse(JSON.stringify(state.regions));
+                gameState.gameOver = state.gameOver;
+                
+                // 重置选择状态
+                resetSelectionState();
+                
+                // 更新UI
+                scoreDisplay.textContent = gameState.score;
+                turnCounter.textContent = gameState.turn;
+                remainingCardsDisplay.textContent = gameState.deck.length;
+                
+                // 重新渲染手牌
+                renderHand();
+                
+                // 更新所有区域显示
+                updateAllRegionsDisplay();
+                
+                // 更新撤销按钮状态
+                updateUndoButton();
+                
+                // 如果游戏结束，显示结果弹窗
+                if (gameState.gameOver) {
+                    finalScoreDisplay.textContent = gameState.score;
+                    resultModal.classList.remove('hidden');
+                } else {
+                    resultModal.classList.add('hidden');
+                }
+            }
+            
+            // 更新所有区域显示
+            function updateAllRegionsDisplay() {
+                for (const pathId of PATHS) {
+                    for (let i = 0; i < 13; i++) {
+                        updateRegionDisplay(pathId, i);
+                    }
+                }
+            }
+            
+            // 更新所有花色收获奇观的分数
+            function updateAllSuitBonusWonders(changedPathId = null, changedSuit = null) {
+                // 遍历所有路径寻找花色收获奇观
+                for (const pathId of PATHS) {
+                    for (let i = 0; i < 13; i++) {
+                        const region = gameState.regions[pathId][i];
+                        
+                        // 检查是否是已占领的奇观且有花色收获效果
+                        if (region.status === 'occupied' && 
+                            region.type === 'wonder' && 
+                            region.wonderData && 
+                            region.wonderEffect && 
+                            region.wonderEffect.type === 'suit_bonus') {
+                            
+                            const effect = region.wonderEffect;
+                            
+                            // 如果指定了changedPathId和changedSuit，只更新受影响的奇观
+                            if (changedPathId && changedSuit) {
+                                // 如果奇观监控的路径不是变更的路径，或者监控的花色不是变更的花色，则跳过
+                                if (effect.pathId !== changedPathId || effect.suit !== changedSuit) {
+                                    continue;
+                                }
+                            }
+                            
+                            // 计算该路径上匹配花色的数量
+                            let suitCount = 0;
+                            for (const r of gameState.regions[effect.pathId]) {
+                                if (r.status === 'occupied' && r.occupyCard && r.occupyCard.suit === effect.suit) {
+                                    suitCount++;
+                                }
+                            }
+                            
+                            // 使用3×n²公式计算新的得分
+                            const newPoints = 3 * (suitCount * suitCount);
+                            
+                            // 如果得分发生变化，更新区域得分
+                            if (region.points !== newPoints) {
+                                region.points = newPoints;
+                                // 更新区域显示
+                                updateRegionDisplay(pathId, i);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 更新撤销按钮状态
+            function updateUndoButton() {
+                const undoBtn = document.getElementById('undo-btn');
+                
+                undoBtn.disabled = currentHistoryIndex <= 0;
+                undoBtn.classList.toggle('opacity-50', currentHistoryIndex <= 0);
+            }
+            
+            // 撤销操作
+            function undoMove() {
+                if (currentHistoryIndex > 0) {
+                    currentHistoryIndex--;
+                    restoreGameState(history[currentHistoryIndex]);
+                }
+            }
+            
+            // 创建一个种子随机数生成器
+            function createSeededRandom(seed) {
+                // 简单的哈希函数
+                let hash = Array.from(seed).reduce((acc, char) => {
+                    return ((acc << 5) - acc) + char.charCodeAt(0) | 0;
+                }, 0);
+                
+                return function() {
+                    const x = Math.sin(hash++) * 10000;
+                    return x - Math.floor(x);
+                };
+            }
+            
+            // 显示提示信息
+            function showToast(message) {
+                toastElement.textContent = message;
+                toastElement.classList.add('opacity-100');
+                
+                setTimeout(() => {
+                    toastElement.classList.remove('opacity-100');
+                }, 2000);
+            }
+            
+            // 复制种子
+            function copySeed() {
+                navigator.clipboard.writeText(gameState.currentSeed).then(() => {
+                    showToast(t('copied'));
+                });
+            }
+            
+            // 分享游戏
+            function shareGame() {
+                let shareUrl;
+                
+                // 处理 about:srcdoc 特殊情况（在 Poe 环境中）
+                if (!window.location.href || window.location.href === "about:srcdoc") {
+                    // 在 Poe iframe 中使用固定的 URL
+                    shareUrl = "https://poe.com/4XPoker";
+                } else {
+                    // 在其他环境中使用当前 URL 的基础部分
+                    const url = new URL(window.location.href);
+                    shareUrl = url.origin + url.pathname;
+                }
+                
+                // 使用 code 参数替代 seed 参数
+                shareUrl += "?code=" + encodeURIComponent(gameState.currentSeed);
+                
+                const shareText = t('shareText', {
+                    score: gameState.score,
+                    seed: gameState.currentSeed
+                });
+                
+                // 将完整的分享链接添加到文本末尾
+                const fullShareText = `${shareText}\n${shareUrl}`;
+                
+                navigator.clipboard.writeText(fullShareText).then(() => {
+                    showToast(t('copied'));
+                }).catch(err => {
+                    console.error('Share failed:', err);
+                });
+            }
+            
+            // 更新弃牌堆计数
+            function updateDiscardCount() {
+                const discardCountEl = document.getElementById('discard-count');
+                if (discardCountEl) {
+                    discardCountEl.textContent = gameState.discardPile.length;
+                }
+            }
+            
+            // 开始新游戏
+            function startGame(seed = null) {
+                // 生成或使用提供的种子
+                gameState.currentSeed = seed || crypto.randomUUID();
+                seedDisplay.textContent = gameState.currentSeed;
+                
+                // 初始化随机数生成器
+                seededRandom = createSeededRandom(gameState.currentSeed);
+                
+                // 重置游戏状态
+                gameState.deck = createDeck();
+                gameState.deck = shuffleDeck(gameState.deck);
+                gameState.hand = [];
+                gameState.discardPile = [];
+                gameState.score = 0;
+                gameState.turn = 1;
+                gameState.gameOver = false;
+                
+                // 重置选择状态
+                resetSelectionState();
+                
+                // 初始化游戏区域
+                initializeGameRegions();
+                
+                // 抽5张起始手牌
+                for (let i = 0; i < 5; i++) {
+                    if (gameState.deck.length > 0) {
+                        gameState.hand.push(drawCard());
+                    }
+                }
+                
+                // 更新UI
+                scoreDisplay.textContent = gameState.score;
+                turnCounter.textContent = gameState.turn;
+                remainingCardsDisplay.textContent = gameState.deck.length;
+                updateDiscardCount();
+                
+                // 渲染手牌
+                renderHand();
+                
+                // 隐藏结果弹窗
+                resultModal.classList.add('hidden');
+                
+                // 重置游戏日志
+                gameLogElement.innerHTML = '';
+                gameLogData = [];
+                
+                // 添加游戏开始日志
+                addLogEntry(t('gameStart'));
+                
+                // 重置历史记录并保存初始状态
+                history = [];
+                currentHistoryIndex = -1;
+                addToHistory(saveGameState());
+            }
+            
+            // 翻译函数
+            function t(key, replacements = {}) {
+                let text = LANGUAGES[currentLanguage][key] || LANGUAGES['en'][key] || key;
+                
+                // 应用替换
+                for (const [placeholder, value] of Object.entries(replacements)) {
+                    text = text.replace(`{${placeholder}}`, value);
+                }
+                
+                return text;
+            }
+            
+            // 检测用户的浏览器语言
+            function detectBrowserLanguage() {
+                const browserLang = navigator.language || navigator.userLanguage;
+                const shortLang = browserLang.split('-')[0];
+                
+                // 检查是否有完全匹配
+                if (LANGUAGES[browserLang]) {
+                    return browserLang;
+                }
+                
+                // 检查语言匹配
+                for (const lang in LANGUAGES) {
+                    if (lang.startsWith(shortLang)) {
+                        return lang;
+                    }
+                }
+                
+                // 默认为中文
+                return 'zh-CN';
+            }
+            
+            // 应用翻译
+            function applyTranslations() {
+                document.querySelectorAll('[data-i18n]').forEach(element => {
+                    const key = element.getAttribute('data-i18n');
+                    element.textContent = t(key);
+                });
+            }
+            
+            // 检查暗黑模式
+            function checkDarkMode() {
+                if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                    document.documentElement.classList.add('dark');
+                }
+                
+                window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
+                    if (event.matches) {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                });
+            }
+            
+            // 初始化事件监听器
+            function setupEventListeners() {
+                // 新游戏按钮
+                document.getElementById('new-game-btn').addEventListener('click', () => startGame());
+                
+                // 撤销按钮
+                document.getElementById('undo-btn').addEventListener('click', undoMove);
+                
+                // 结束回合按钮
+                document.getElementById('end-turn-btn').addEventListener('click', endTurn);
+                
+                // 弃牌按钮
+                document.getElementById('discard-btn').addEventListener('click', discardCard);
+                
+                // 复制种子按钮
+                document.getElementById('copy-seed').addEventListener('click', copySeed);
+                
+                // 分享游戏按钮
+                document.getElementById('share-game').addEventListener('click', shareGame);
+                
+                // 顶部种子输入框随机种子按钮
+                document.getElementById('random-seed-btn').addEventListener('click', () => {
+                    const newSeed = crypto.randomUUID();
+                    const seedInput = document.getElementById('seed-input');
+                    seedInput.value = newSeed;
+                    seedInput.classList.add('bg-yellow-100', 'dark:bg-yellow-900');
+                    setTimeout(() => {
+                        seedInput.classList.remove('bg-yellow-100', 'dark:bg-yellow-900');
+                    }, 1000);
+                });
+                
+                // 顶部种子输入框开始游戏按钮
+                document.getElementById('start-seed-game').addEventListener('click', () => {
+                    const seedInput = document.getElementById('seed-input');
+                    const seed = seedInput.value.trim();
+                    if (seed) {
+                        startGame(seed);
+                        // 更新游戏控制区的种子显示
+                        seedDisplay.textContent = seed;
+                    } else {
+                        seedInput.classList.add('border-red-500');
+                        setTimeout(() => {
+                            seedInput.classList.remove('border-red-500');
+                        }, 1000);
+                    }
+                });
+                
+                // 种子输入框回车键触发开始游戏
+                document.getElementById('seed-input').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        document.getElementById('start-seed-game').click();
+                    }
+                });
+                
+                // 随机种子按钮（顶部信息区）
+                document.getElementById('random-seed').addEventListener('click', () => {
+                    const newSeed = crypto.randomUUID();
+                    // 更新显示和游戏状态中的种子
+                    seedDisplay.textContent = newSeed;
+                    gameState.currentSeed = newSeed;
+                    
+                    // 同时更新种子输入框
+                    const seedInput = document.getElementById('seed-input');
+                    if (seedInput) {
+                        seedInput.value = newSeed;
+                    }
+                    
+                    // 高亮显示提示已更新
+                    seedDisplay.classList.add('bg-yellow-100', 'dark:bg-yellow-900');
+                    setTimeout(() => {
+                        seedDisplay.classList.remove('bg-yellow-100', 'dark:bg-yellow-900');
+                    }, 1000);
+                });
+                
+                // 显示输入种子弹窗
+            function showSeedInputPrompt() {
+                // 创建弹窗提示
+                const promptOverlay = document.createElement('div');
+                promptOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+                
+                const promptBox = document.createElement('div');
+                promptBox.className = 'bg-white dark:bg-gray-800 p-5 rounded-lg shadow-lg max-w-md w-full mx-4';
+                
+                const title = document.createElement('h3');
+                title.className = 'text-xl font-bold mb-3 text-center';
+                title.textContent = '输入种子';
+                
+                const message = document.createElement('p');
+                message.className = 'mb-4 text-sm text-gray-600 dark:text-gray-400';
+                message.textContent = '输入一个种子值来开始相同的游戏，或使用当前种子重玩。';
+                
+                const inputContainer = document.createElement('div');
+                inputContainer.className = 'mb-4';
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.className = 'w-full p-2 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200';
+                input.placeholder = '输入种子值';
+                input.value = gameState.currentSeed;
+                input.spellcheck = false;
+                
+                inputContainer.appendChild(input);
+                
+                const buttonContainer = document.createElement('div');
+                buttonContainer.className = 'flex justify-between gap-3';
+                
+                const startButton = document.createElement('button');
+                startButton.className = 'bg-primary hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex-1';
+                startButton.textContent = '开始游戏';
+                startButton.addEventListener('click', () => {
+                    const seed = input.value.trim();
+                    if (seed) {
+                        document.body.removeChild(promptOverlay);
+                        startGame(seed);
+                    } else {
+                        input.classList.add('border-red-500');
+                    }
+                });
+                
+                const cancelButton = document.createElement('button');
+                cancelButton.className = 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg flex-1';
+                cancelButton.textContent = '取消';
+                cancelButton.addEventListener('click', () => {
+                    document.body.removeChild(promptOverlay);
+                });
+                
+                buttonContainer.appendChild(startButton);
+                buttonContainer.appendChild(cancelButton);
+                
+                promptBox.appendChild(title);
+                promptBox.appendChild(message);
+                promptBox.appendChild(inputContainer);
+                promptBox.appendChild(buttonContainer);
+                promptOverlay.appendChild(promptBox);
+                
+                document.body.appendChild(promptOverlay);
+                
+                // 自动聚焦输入框
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 100);
+                
+                // 添加按回车键提交
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        startButton.click();
+                    }
+                });
+            }
+            
+            // 输入种子按钮
+            document.getElementById('input-seed').addEventListener('click', () => {
+                showSeedInputPrompt();
+            });
+                
+                // 游戏结束弹窗的按钮
+                document.getElementById('play-again').addEventListener('click', () => startGame());
+                document.getElementById('replay-same-seed').addEventListener('click', () => startGame(gameState.currentSeed));
+                document.getElementById('share-result').addEventListener('click', shareGame);
+                
+                // 历史浏览器按钮
+                document.getElementById('history-btn').addEventListener('click', () => {
+                    // 显示历史浏览器
+                    const historyModal = document.getElementById('history-modal');
+                    if (historyModal) {
+                        historyModal.classList.remove('hidden');
+                    }
+                });
+                
+                // 历史浏览器的取消按钮
+                document.getElementById('history-cancel').addEventListener('click', () => {
+                    const historyModal = document.getElementById('history-modal');
+                    if (historyModal) {
+                        historyModal.classList.add('hidden');
+                    }
+                });
+            }
+            
+            // 初始化
+            function init() {
+                // 设置当前语言
+                currentLanguage = detectBrowserLanguage();
+                
+                // 应用翻译
+                applyTranslations();
+                
+                // 检查暗黑模式
+                checkDarkMode();
+                
+                // 设置事件监听器
+                setupEventListeners();
+                
+                // 检查URL是否包含种子参数（支持code或seed参数）
+                let seedFromURL = null;
+                try {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    // 优先使用code参数，如果没有则尝试使用seed参数
+                    seedFromURL = urlParams.get('code') || urlParams.get('seed');
+                } catch (error) {
+                    console.error("Error parsing URL parameters:", error);
+                }
+                
+                // 如果有URL种子，同时更新种子输入框
+                if (seedFromURL) {
+                    const seedInput = document.getElementById('seed-input');
+                    if (seedInput) {
+                        seedInput.value = seedFromURL;
+                    }
+                }
+                
+                // 开始游戏
+                startGame(seedFromURL);
+            }
+            
+            // 当页面加载完成后初始化游戏
+            window.addEventListener('DOMContentLoaded', init);
+        </script>
+    </div>
+</body>
+</html>
+

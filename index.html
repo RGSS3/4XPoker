@@ -663,101 +663,104 @@
                 '普法战争', '库图佐夫战役', '斯大林格勒战役', '诺曼底登陆',
                 '朝鲜战争', '太平洋战争', '珍珠港事件', '沙丘之战'
             ];
+            const COMBAT_CHECK_FUNCTIONS = {
+                checkPair: cards => {
+                    if (cards.length !== 2) return false;
+                    const counts = {};
+                    for (const card of cards) {
+                        counts[card.rank] = (counts[card.rank] || 0) + 1;
+                    }
+                    return Object.values(counts).some(count => count >= 2);
+                },
+                checkAceAny: cards => cards.some(card => card.rank === 'A') && cards.length === 2,
+                checkThreeKind: cards => findSameRankCards(cards, 3) && cards.length === 3,
+                checkTwoPair: cards => {
+                    if (cards.length !== 4) return false;
+                    const counts = {};
+                    for (const card of cards) {
+                        counts[card.rank] = (counts[card.rank] || 0) + 1;
+                    }
+                    let pairCount = 0;
+                    for (const rank in counts) {
+                        if (counts[rank] >= 2) {
+                            pairCount++;
+                        }
+                    }
+                    return pairCount >= 2;
+                },
+                checkFlush: cards => {
+                    if (cards.length !== 4) return false;
+                    const suits = cards.map(card => card.suit);
+                    const suitCounts = {};
+                    for (const suit of suits) {
+                        suitCounts[suit] = (suitCounts[suit] || 0) + 1;
+                    }
+                    return Object.values(suitCounts).some(count => count >= 4);
+                },
+                checkStraight: cards => {
+                    if (cards.length !== 4) return false;
+                    const values = cards.map(card => RANK_VALUES[card.rank]);
+                    const uniqueValues = [...new Set(values)].sort((a, b) => a - b);
+                    for (let i = 0; i <= uniqueValues.length - 4; i++) {
+                        let isStraight = true;
+                        for (let j = 0; j < 3; j++) {
+                            if (uniqueValues[i + j + 1] !== uniqueValues[i + j] + 1) {
+                                isStraight = false;
+                                break;
+                            }
+                        }
+                        if (isStraight) return true;
+                    }
+                    const hasAce = values.includes(14);
+                    const has2 = values.includes(2);
+                    const has3 = values.includes(3);
+                    const has4 = values.includes(4);
+                    if (hasAce && has2 && has3 && has4) {
+                        return true;
+                    }
+                    return false;
+                },
+                checkFourKind: cards => findSameRankCards(cards, 4) && cards.length === 4
+            };
             
             // 战争区域解除代价类型及其权重
-             const COMBAT_REQUIREMENTS = {
-                'blue': [ // 蓝级战争区域代价
-                    {type: 'pair', name: '一对', display: '任意一对', weight: 2,
-                        // 检查是否至少有一对牌
-                        check: cards => {
-                            const counts = {};
-                            for (const card of cards) {
-                                counts[card.rank] = (counts[card.rank] || 0) + 1;
-                            }
-                            return Object.values(counts).some(count => count >= 2);
-                        }
+            const COMBAT_REQUIREMENTS = {
+                'blue': [
+                    {
+                        type: 'pair', name: '一对', display: '任意一对', weight: 2,
+                        checkFnName: 'checkPair' // Store the key
                     },
-                    {type: 'ace_any', name: 'A+任意一张牌', display: 'A+任意一张牌', weight: 1,
-                        // 检查手牌中是否包含 A
-                        check: cards => cards.some(card => card.rank === 'A')
+                    {
+                        type: 'ace_any', name: 'A+任意一张牌', display: 'A+任意一张牌', weight: 1,
+                        checkFnName: 'checkAceAny' // Store the key
                     }
                 ],
-                'purple': [ // 紫级战争区域代价
-                    {type: 'three_kind', name: '三条', display: '三张相同点数', weight: 2,
-                        // 检查是否至少有三张相同点数的牌 (使用 findSameRankCards 辅助函数)
-                        check: cards => findSameRankCards(cards, 3)
+                'purple': [
+                    {
+                        type: 'three_kind', name: '三条', display: '三张相同点数', weight: 2,
+                        checkFnName: 'checkThreeKind' // Store the key
                     },
-                    {type: 'two_pair', name: '两对', display: '两对不同点数', weight: 2,
-                        // 检查是否至少有两对不同点数的牌
-                        check: cards => {
-                            const counts = {};
-                            for (const card of cards) {
-                                counts[card.rank] = (counts[card.rank] || 0) + 1;
-                            }
-                            let pairCount = 0;
-                            for (const rank in counts) {
-                                if (counts[rank] >= 2) {
-                                    pairCount++;
-                                }
-                            }
-                            return pairCount >= 2;
-                        }
+                    {
+                        type: 'two_pair', name: '两对', display: '两对不同点数', weight: 2,
+                        checkFnName: 'checkTwoPair' // Store the key
                     }
                 ],
-                'orange': [ // 橙级战争区域代价
-                    {type: 'flush', name: '同花', display: '四张同花色', weight: 2,
-                        // 检查是否至少有五张同花色的牌
-                        check: cards => {
-                            if (cards.length < 4) return false;
-                            const suits = cards.map(card => card.suit);
-                            // 检查是否存在某个花色的牌数 >= 5
-                            const suitCounts = {};
-                            for(const suit of suits) {
-                                suitCounts[suit] = (suitCounts[suit] || 0) + 1;
-                            }
-                            return Object.values(suitCounts).some(count => count >= 4);
-                        }
+                'orange': [
+                    {
+                        type: 'flush', name: '同花', display: '四张同花色', weight: 2,
+                        checkFnName: 'checkFlush' // Store the key
                     },
-                    {type: 'straight', name: '顺子', display: '四张连续点数', weight: 2,
-                        // 检查是否至少有四张连续点数的牌 (包含 A-4 和 J-A)
-                        check: cards => {
-                            if (cards.length < 4) return false;
-                            const values = cards.map(card => RANK_VALUES[card.rank]);
-                            // 获取唯一的点数值并排序
-                            const uniqueValues = [...new Set(values)].sort((a, b) => a - b);
-
-                            // 检查标准顺子 (是否有连续的5个点数)
-                            for (let i = 0; i <= uniqueValues.length - 4; i++) {
-                                let isStraight = true;
-                                for (let j = 0; j < 3; j++) {
-                                    if (uniqueValues[i + j + 1] !== uniqueValues[i + j] + 1) {
-                                        isStraight = false;
-                                        break;
-                                    }
-                                }
-                                if (isStraight) return true;
-                            }
-
-                            // 检查 A-5 顺子 (A, 2, 3, 4)
-                            const hasAce = values.includes(14);
-                            const has2 = values.includes(2);
-                            const has3 = values.includes(3);
-                            const has4 = values.includes(4);
-                         
-
-                            if (hasAce && has2 && has3 && has4) {
-                                return true; // A-2-3-4 顺子存在
-                            }
-
-                            return false; // 没有找到顺子
-                        }
+                    {
+                        type: 'straight', name: '顺子', display: '四张连续点数', weight: 2,
+                        checkFnName: 'checkStraight' // Store the key
                     },
-                    {type: 'four_kind', name: '四条', display: '四张相同点数', weight: 1,
-                        // 检查是否至少有四张相同点数的牌 (使用 findSameRankCards 辅助函数)
-                        check: cards => findSameRankCards(cards, 4)
+                    {
+                        type: 'four_kind', name: '四条', display: '四张相同点数', weight: 1,
+                        checkFnName: 'checkFourKind' // Store the key
                     }
                 ]
             };
+            
 
             // 辅助函数：检查牌组中是否有指定数量的同点数牌 (这个函数本身是正确的)
             function findSameRankCards(cards, count) {
@@ -1358,43 +1361,42 @@
             function attemptResolveCombatWithCards(pathId, index) {
                 const region = gameState.regions[pathId][index];
 
-                // 确保是已探索的战争区域
                 if (region.type !== 'combat' || region.status !== 'explored' || !region.combatData) {
-                    showMessage("这不是一个可以解除的战争区域"); // Fallback message
+                    showMessage("这不是一个可以解除的战争区域");
                     resetSelectionState();
                     return;
                 }
 
-                // 确保选择了手牌
                 if (gameState.selectedCards.length === 0) {
                     showMessage('请先选择要用于解除战争的手牌');
-                    // 不要重置选择状态，因为用户可能刚刚点击了区域，希望去选择牌
                     return;
                 }
 
-                // 获取选择的卡牌对象
                 const selectedCards = gameState.selectedCards.map(idx => gameState.hand[idx]);
-
-                // 检查卡牌是否满足解除条件
                 const requirement = region.combatData.requirement;
 
-                if (hasPattern(selectedCards, requirement.check)) { // 使用新的 hasPattern 函数
-                    // 成功解除战争区域
-                    resolveCombatSuccessfully(pathId, index, gameState.selectedCards); // resolveCombatSuccessfully 会处理区域状态、弃牌、日志、重置选择等
+                // Retrieve the check function using the stored name
+                const checkFunction = COMBAT_CHECK_FUNCTIONS[requirement.checkFnName];
+
+                if (typeof checkFunction !== 'function') {
+                    console.error(`Error: Combat check function '${requirement.checkFnName}' not found or not a function for region ${pathId}-${index}`);
+                    showMessage(`解除失败：内部错误，无法找到战争解除条件`);
+                    addLogEntry(`解除失败: ${PATH_NAMES[pathId]} ${region.rank}级「${region.combatData.name}」，内部条件错误`);
+                    resetSelectionState();
+                    return;
+                }
+
+
+                if (hasPattern(selectedCards, checkFunction)) { // Pass the retrieved function
+                    resolveCombatSuccessfully(pathId, index, gameState.selectedCards);
                 } else {
-                    // 不满足条件
                     showMessage(`解除失败：选中的手牌不满足条件 "${requirement.display}"`);
                     addLogEntry(`解除失败: ${PATH_NAMES[pathId]} ${region.rank}级「${region.combatData.name}」，选中的牌不满足条件`);
-
-                    // 解除失败后，重置选择状态
                     resetSelectionState();
                 }
 
-                // 不管成功或失败，更新UI（renderHand、updateCornerInfo等）应该在 resolveCombatSuccessfully 或 resetSelectionState 之后发生
-                // resolveCombatSuccessfully 内部会调用 renderHand 和 updateDiscardCount
-                // resetSelectionState 内部会调用 renderHand
-                updateCornerInfo(); // 确保得分、手牌数量等信息更新
-                addToHistory(saveGameState()); // 保存状态
+                updateCornerInfo();
+                addToHistory(saveGameState());
             }
             
             // 检查区域是否可以被探索（必须相邻于已探索或已占领区域）
@@ -1693,33 +1695,6 @@
                 document.body.appendChild(modalOverlay);
             }
             
-            // 尝试使用手牌解除战争区域
-            function tryResolveCombatWithCards(pathId, index) {
-                const region = gameState.regions[pathId][index];
-                
-                // 如果没有选择卡牌，提示用户选择
-                if (gameState.selectedCards.length === 0) {
-                    showMessage('请先选择要用于解除战争的手牌');
-                    return;
-                }
-                
-                // 获取选择的卡牌
-                const selectedCards = gameState.selectedCards.map(idx => gameState.hand[idx]);
-                
-                // 检查卡牌是否满足解除条件
-                const requirement = region.combatData.requirement;
-                
-                if (requirement.check(selectedCards)) {
-                    // 成功解除战争区域
-                    resolveCombatSuccessfully(pathId, index, selectedCards);
-                } else {
-                    // 不满足条件
-                    showMessage(`不满足解除条件: ${requirement.display}`);
-                }
-            }
-            
-                        // 找到 resolveCombatSuccessfully 函数的定义
-            // 确保它接受第三个参数，用于接收卡牌的索引数组
             function resolveCombatSuccessfully(pathId, index, usedCardIndices) { // <-- 确保这里有 usedCardIndices 参数
                 const region = gameState.regions[pathId][index];
 
@@ -2413,7 +2388,7 @@
                 points = cardRank * 2;
                 if (card.suit === 'heart') {
                     let originalPoints = points;
-                    points += 2;
+                    points = cardRank * 3;
                     bonusInfo = `(${t('heartBonus')}: ${originalPoints}→${points})`;
                 }
                 if (!bonusInfo) {
@@ -2952,6 +2927,7 @@
                 addToHistory(saveGameState());
             }
             
+            /*
             // 检查游戏是否结束
             function checkGameOver() {
                 // 如果没有牌可抽并且手牌为空，游戏结束
@@ -2962,6 +2938,16 @@
                     finalScoreDisplay.textContent = gameState.score;
                     resultModal.classList.remove('hidden');
                 }
+            }*/
+            function checkGameOver() {
+                if (gameState.turn > 80) {
+                    gameState.gameOver = true;
+
+                    // 显示结果弹窗
+                    finalScoreDisplay.textContent = gameState.score;
+                    resultModal.classList.remove('hidden');
+                }
+                    
             }
             
             // 创建并洗牌
@@ -3480,9 +3466,9 @@
                     pointsPerTurn.textContent = '+' + points;
                     
                     // 根据得分调整显示样式
-                    if (points >= 30) {
+                    if (points >= 300) {
                         pointsPerTurn.className = 'text-red-500 dark:text-red-400 font-bold';
-                    } else if (points >= 20) {
+                    } else if (points >= 200) {
                         pointsPerTurn.className = 'text-yellow-500 dark:text-yellow-400 font-bold';
                     } else if (points > 0) {
                         pointsPerTurn.className = 'text-green-600 dark:text-green-400 font-bold';
@@ -3502,9 +3488,9 @@
                     floatPointsPerTurn.textContent = '+' + points;
                     
                     // 根据得分调整显示样式
-                    if (points >= 30) {
+                    if (points >= 300) {
                         floatPointsPerTurn.className = 'text-red-500 dark:text-red-400 font-bold';
-                    } else if (points >= 20) {
+                    } else if (points >= 200) {
                         floatPointsPerTurn.className = 'text-yellow-500 dark:text-yellow-400 font-bold';
                     } else if (points > 0) {
                         floatPointsPerTurn.className = 'text-green-600 dark:text-green-400 font-bold';
@@ -3538,7 +3524,9 @@
                     cardsPerTurn += extraDraws;
                     
                     // 计算预计剩余回合数（最少1回合）
-                    const estimatedRemainingTurns = Math.max(1, Math.ceil(gameState.deck.length / cardsPerTurn));
+                    //const estimatedRemainingTurns = Math.max(1, Math.ceil(gameState.deck.length / cardsPerTurn));
+                    // 改为 80回合减去当前回合
+                    const estimatedRemainingTurns = Math.max(0, Math.ceil(80 - gameState.turn));
                     
                     // 计算最终预计得分
                     const finalEstimatedScore = gameState.score + (points * estimatedRemainingTurns);
@@ -4259,8 +4247,3 @@
     </div>
 </body>
 </html>
-
-
-
-
-

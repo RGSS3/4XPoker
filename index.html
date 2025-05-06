@@ -1219,16 +1219,11 @@
                         
                         // 5-6级有机会生成战争区域
                         if (rank >= 5 && rank <= 6) {
-                            // 25%概率为战争区域, 20%概率为回声区域, 10%概率为奇观, 45%概率为普通区域
+                            // 100%概率为战争区域, 目前还没有灾难区域
                             const randomVal = seededRandom();
-                            if (randomVal < 0.25) {
+                            if (randomVal < 1) {
                                 type = 'combat';
                                 combatData = createCombatZone(rank);
-                            } else if (randomVal < 0.45) {
-                                type = 'wonder';
-                                wonderData = createWonder(rank);
-                            } else if (randomVal < 0.65) {
-                                type = 'echo';
                             }
                         }
                         // 7-8级区域

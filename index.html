@@ -705,31 +705,31 @@
                     }
                 ],
                 'orange': [ // 橙级战争区域代价
-                    {type: 'flush', name: '同花', display: '五张同花色', weight: 2,
+                    {type: 'flush', name: '同花', display: '四张同花色', weight: 2,
                         // 检查是否至少有五张同花色的牌
                         check: cards => {
-                            if (cards.length < 5) return false;
+                            if (cards.length < 4) return false;
                             const suits = cards.map(card => card.suit);
                             // 检查是否存在某个花色的牌数 >= 5
                             const suitCounts = {};
                             for(const suit of suits) {
                                 suitCounts[suit] = (suitCounts[suit] || 0) + 1;
                             }
-                            return Object.values(suitCounts).some(count => count >= 5);
+                            return Object.values(suitCounts).some(count => count >= 4);
                         }
                     },
-                    {type: 'straight', name: '顺子', display: '五张连续点数', weight: 2,
-                        // 检查是否至少有五张连续点数的牌 (包含 A-5 和 10-A)
+                    {type: 'straight', name: '顺子', display: '四张连续点数', weight: 2,
+                        // 检查是否至少有四张连续点数的牌 (包含 A-4 和 J-A)
                         check: cards => {
-                            if (cards.length < 5) return false;
+                            if (cards.length < 4) return false;
                             const values = cards.map(card => RANK_VALUES[card.rank]);
                             // 获取唯一的点数值并排序
                             const uniqueValues = [...new Set(values)].sort((a, b) => a - b);
 
                             // 检查标准顺子 (是否有连续的5个点数)
-                            for (let i = 0; i <= uniqueValues.length - 5; i++) {
+                            for (let i = 0; i <= uniqueValues.length - 4; i++) {
                                 let isStraight = true;
-                                for (let j = 0; j < 4; j++) {
+                                for (let j = 0; j < 3; j++) {
                                     if (uniqueValues[i + j + 1] !== uniqueValues[i + j] + 1) {
                                         isStraight = false;
                                         break;
@@ -738,16 +738,15 @@
                                 if (isStraight) return true;
                             }
 
-                            // 检查 A-5 顺子 (A, 2, 3, 4, 5)
-                            // 需要包含 A(14), 2, 3, 4, 5 的点数
+                            // 检查 A-5 顺子 (A, 2, 3, 4)
                             const hasAce = values.includes(14);
                             const has2 = values.includes(2);
                             const has3 = values.includes(3);
                             const has4 = values.includes(4);
-                            const has5 = values.includes(5);
+                         
 
-                            if (hasAce && has2 && has3 && has4 && has5) {
-                                return true; // A-2-3-4-5 顺子存在
+                            if (hasAce && has2 && has3 && has4) {
+                                return true; // A-2-3-4 顺子存在
                             }
 
                             return false; // 没有找到顺子

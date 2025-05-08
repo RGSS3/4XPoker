@@ -1221,7 +1221,7 @@
                         // 区域类型的生成规则
                         
                         // 5-6级有机会生成战争区域
-                        if (rank >= 5 && rank <= 6) {
+                        if (rank >= 5) {
                             // 100%概率为战争区域, 目前还没有灾难区域
                             const randomVal = seededRandom();
                             if (randomVal < 1) {
@@ -1230,7 +1230,7 @@
                             }
                         }
                         // 7-8级区域
-                        else if (rank >= 7 && rank <= 8) {
+                        else if (rank >= 6 && rank <= 8) {
                             // 30%概率为战争区域, 30%概率为奇观, 20%概率为回声区域, 20%概率为普通区域
                             const randomVal = seededRandom();
                             if (randomVal < 0.3) {
@@ -3613,7 +3613,7 @@
                 const allOccupied = path.every(region => region.status === 'occupied');
                 
                 // 如果路径已经被完全征服，且没有被标记为已征服
-                if (allOccupied && !gameState.conqueredPaths) {
+                if (allOccupied && !(gameState.conqueredPaths && gameState.conqueredPaths[pathId])) {
                     // 初始化已征服路径记录
                     if (!gameState.conqueredPaths) {
                         gameState.conqueredPaths = {};
